@@ -94,13 +94,25 @@ const TimeDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, en
               startDateTime.setDate(endDateTime.getDate() - 1);
           }
         }
+        const formatDate = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          const seconds = String(date.getSeconds()).padStart(2, '0');
+          const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+          
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+      };
+      
 
         let query = supabase
           .from('appointments')
           .select('appointment_time')
           .eq('hospital_id', hospitalId)
-          .gte('appointment_time', startDateTime.toISOString())
-          .lte('appointment_time', endDateTime.toISOString());
+          .gte('appointment_time', formatDate(startDateTime))
+          .lte('appointment_time', formatDate(endDateTime));
 
         if (doctorId !== 'all') {
           query = query.eq('doctor_id', doctorId);
@@ -135,6 +147,7 @@ const TimeDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, en
           // Increment the counter for this day-interval
           dailyDistribution.set(key, dailyDistribution.get(key) + 1);
         });
+
 
         const totalVisits = halfHourlyDistribution.reduce((a, b) => a + b, 0);
         const daysDifference = Math.max(1, Math.ceil((endDateTime - startDateTime) / (1000 * 60 * 60 * 24)));
@@ -172,11 +185,15 @@ const TimeDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, en
             checkDate.setDate(startDateTime.getDate() + i);
             const key = `${checkDate.toDateString()}-${actualIndex}`;
             const dayCount = dailyDistribution.get(key) || 0;
-            dailyCounts.push(dayCount);
+            if (dayCount > 0) { // Only collect non-zero counts
+              dailyCounts.push(dayCount);
+            }
           }
           
-          const medianPatients = Math.round(calculateMedian(dailyCounts));
-
+          // If no non-zero counts, return 0 as median
+          const medianPatients = dailyCounts.length > 0 ? 
+            Math.round(calculateMedian(dailyCounts)) : 0;
+        
           return {
             timeSlot: label,
             percentage,
@@ -298,12 +315,13 @@ const TimeDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, en
     <div style={{
       display: 'flex',
       gap: '20px',
-      backgroundColor: 'white',
-      borderRadius: '8px',
+      backgroundColor: '#1E2023',
+      borderRadius: '12px',
       padding: '20px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      boxShadow: '0 4px 6px rgba(0,0,0,0.2)',
       height: 'auto',
-      minHeight: '400px'
+      minHeight: '400px',
+      color: '#E8E9EA'
     }}>
       <div style={{ flex: '3' }}>
         {loading ? (
@@ -311,18 +329,99 @@ const TimeDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, en
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            height: '100%'
+            height: '100%',
+            color: '#8B8D91'
           }}>
             Loading...
           </div>
         ) : data ? (
-          <Line data={data} options={options} />
+          <Line
+            data={{
+              ...data,
+              datasets: [
+                {
+                  ...data.datasets[0],
+                  borderColor: '#00BCD4',
+                  pointBackgroundColor: '#00BCD4',
+                  pointBorderColor: '#00BCD4',
+                },
+                {
+                  ...data.datasets[1],
+                  borderColor: '#FF4081',
+                  pointBackgroundColor: '#FF4081',
+                  pointBorderColor: '#FF4081',
+                }
+              ]
+            }}
+            options={{
+              ...options,
+              plugins: {
+                ...options.plugins,
+                legend: {
+                  ...options.plugins.legend,
+                  labels: {
+                    color: '#E8E9EA'
+                  }
+                },
+                title: {
+                  ...options.plugins.title,
+                  color: '#E8E9EA'
+                }
+              },
+              scales: {
+                ...options.scales,
+                y: {
+                  ...options.scales.y,
+                  grid: {
+                    color: '#2A2D31',
+                    borderColor: '#2A2D31'
+                  },
+                  ticks: {
+                    color: '#8B8D91'
+                  },
+                  title: {
+                    ...options.scales.y.title,
+                    color: '#8B8D91'
+                  }
+                },
+                y1: {
+                  ...options.scales.y1,
+                  grid: {
+                    color: '#2A2D31',
+                    borderColor: '#2A2D31'
+                  },
+                  ticks: {
+                    color: '#8B8D91'
+                  },
+                  title: {
+                    ...options.scales.y1.title,
+                    color: '#8B8D91'
+                  }
+                },
+                x: {
+                  ...options.scales.x,
+                  grid: {
+                    color: '#2A2D31',
+                    borderColor: '#2A2D31'
+                  },
+                  ticks: {
+                    color: '#8B8D91'
+                  },
+                  title: {
+                    ...options.scales.x.title,
+                    color: '#8B8D91'
+                  }
+                }
+              }
+            }}
+          />
         ) : (
           <div style={{
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            height: '100%'
+            height: '100%',
+            color: '#8B8D91'
           }}>
             No data available
           </div>
@@ -330,25 +429,62 @@ const TimeDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, en
       </div>
       <div style={{ 
         flex: '1',
-        borderLeft: '1px solid #eee',
+        borderLeft: '1px solid #2A2D31',
         paddingLeft: '20px',
         overflowY: 'auto',
-        maxHeight: '400px'
+        maxHeight: '400px',
+        '&::-webkit-scrollbar': {
+          width: '8px'
+        },
+        '&::-webkit-scrollbar-track': {
+          background: '#2A2D31',
+          borderRadius: '4px'
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: '#454952',
+          borderRadius: '4px'
+        }
       }}>
-        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Time Distribution</h3>
+        <h3 style={{ 
+          marginTop: 0, 
+          marginBottom: '15px',
+          color: '#E8E9EA',
+          fontSize: '18px',
+          fontWeight: '500'
+        }}>Time Distribution</h3>
         {percentageData.map((item, index) => (
           <div
             key={index}
             style={{
-              padding: '8px',
-              margin: '4px 0',
-              borderRadius: '4px',
-              backgroundColor: getColorForPercentage(parseFloat(item.percentage)),
-              color: 'white',
-              fontSize: '14px'
+              padding: '10px',
+              margin: '6px 0',
+              borderRadius: '6px',
+              backgroundColor: parseFloat(item.percentage) >= 20 ? '#1B5E20' : 
+                             parseFloat(item.percentage) <= 5 ? '#B71C1C' : 
+                             '#0D47A1',
+              color: '#E8E9EA',
+              fontSize: '14px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              transition: 'transform 0.2s ease',
+              cursor: 'pointer',
+              ':hover': {
+                transform: 'translateY(-2px)'
+              }
             }}
           >
-            {item.timeSlot}: {item.percentage}% ({item.count} visits) 
+            <div style={{ fontWeight: '500' }}>{item.timeSlot}</div>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              marginTop: '4px',
+              fontSize: '12px',
+              color: 'rgba(232, 233, 234, 0.8)'
+            }}>
+              <span>{item.count} visits - {item.percentage}% </span>
+            </div>
+            <div style={{ marginTop: '2px' }}>
+    <span>average {item.medianPatients} patients/day visit in this time slot</span>
+  </div>
           </div>
         ))}
       </div>

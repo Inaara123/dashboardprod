@@ -1,127 +1,70 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  IconButton,
+  TextField,
+  Box,
+  Typography,
+  Paper,
+} from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
 
 const AgeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
   const [loading, setLoading] = useState(true);
   const [ageCounts, setAgeCounts] = useState([]);
-  const [editingBin, setEditingBin] = useState(null);
+  const [openDialog, setOpenDialog] = useState(false);
   const [showPercentages, setShowPercentages] = useState(false);
-  
+  const barColors = [
+    '#4299E1', // Blue
+    '#68D391', // Green
+    '#9F7AEA', // Purple
+    '#F6AD55', // Orange
+    '#FC8181', // Red
+    '#63B3ED', // Light Blue
+    '#4FD1C5', // Teal
+    '#F687B3', // Pink
+  ];
+
   const defaultAgeBins = [
     { id: 'bin-1', start: '<', end: '20', count: 0 },
     { id: 'bin-2', start: '20', end: '25', count: 0 },
     { id: 'bin-3', start: '25', end: '30', count: 0 },
     { id: 'bin-4', start: '30', end: '35', count: 0 },
     { id: 'bin-5', start: '35', end: '40', count: 0 },
-    { id: 'bin-6', start: '40', end: '45', count: 0 },
-    { id: 'bin-7', start: '45', end: '50', count: 0 },
-    { id: 'bin-8', start: '50', end: '>', count: 0 }
+    { id: 'bin-6', start: '40', end: '50', count: 0 },
+    { id: 'bin-7', start: '50', end: '60', count: 0 },
+    { id: 'bin-8', start: '60', end: '>', count: 0 },
   ];
 
   const [ageBins, setAgeBins] = useState(defaultAgeBins);
   const [tempBins, setTempBins] = useState(defaultAgeBins);
-  const [showUpdateButton, setShowUpdateButton] = useState(false);
-  
-  const colors = [
-    '#2C3E50', '#E74C3C', '#8E44AD', '#16A085',
-    '#D35400', '#2980B9', '#C0392B', '#7D3C98'
-  ];
 
-  const sortBins = (bins) => {
-    return [...bins].sort((a, b) => {
-      // Handle special cases first
-      if (a.start === '<') return -1;
-      if (b.start === '<') return 1;
-      if (a.end === '>') return 1;
-      if (b.end === '>') return -1;
-      
-      // Compare start values for normal cases
-      return parseFloat(a.start) - parseFloat(b.start);
-    });
+  // Elegant gradient colors for bars
+  const gradientOffset = () => {
+    return {
+      offset: '0%',
+      stopColor: '#4158D0',
+    };
   };
 
-  const getTimeRanges = () => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    let currentStart, currentEnd;
-    
-    switch (timeRange) {
-      case '1day':
-        currentStart = today;
-        currentEnd = now;
-        break;
-      case '1week':
-        currentStart = new Date(today);
-        currentStart.setDate(currentStart.getDate() - 7);
-        currentEnd = now;
-        break;
-      case '1month':
-        currentStart = new Date(today);
-        currentStart.setMonth(currentStart.getMonth() - 1);
-        currentEnd = now;
-        break;
-      case '3months':
-        currentStart = new Date(today);
-        currentStart.setMonth(currentStart.getMonth() - 3);
-        currentEnd = now;
-        break;
-      case 'custom':
-        currentStart = new Date(startDate);
-        currentEnd = new Date(endDate);
-        break;
-      default:
-        currentStart = today;
-        currentEnd = now;
+  useEffect(() => {
+    fetchStoredAgeBins();
+  }, [hospitalId]);
+
+  useEffect(() => {
+    if (ageBins.length > 0) {
+      fetchAgeData();
     }
-    
-    return { currentStart, currentEnd };
-  };
+  }, [hospitalId, doctorId, timeRange, startDate, endDate, ageBins]); // Include ageBins in dependency array
 
-  const calculateAge = (birthDate) => {
-    if (!birthDate) return null;
-    const today = new Date();
-    const birth = new Date(birthDate);
-    
-    const diffMs = today - birth;
-    const ageDate = new Date(diffMs);
-    
-    const years = Math.abs(ageDate.getUTCFullYear() - 1970);
-    
-    if (years === 0) {
-      const months = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44));
-      return months / 12;
-    }
-    
-    return years;
-  };
-
-  const getAgeBucket = (age) => {
-    if (age === null) return 'Unknown';
-    
-    const sortedBins = [...ageBins].sort((a, b) => {
-      const rangeA = (a.end === '>' ? 100 : parseFloat(a.end)) - (a.start === '<' ? 0 : parseFloat(a.start));
-      const rangeB = (b.end === '>' ? 100 : parseFloat(b.end)) - (b.start === '<' ? 0 : parseFloat(b.start));
-      return rangeA - rangeB;
-    });
-  
-    const matches = sortedBins.filter(bin => {
-      const start = bin.start === '<' ? -Infinity : parseFloat(bin.start);
-      const end = bin.end === '>' ? Infinity : parseFloat(bin.end);
-      
-      if (bin.start === '<' && age < end) return true;
-      if (bin.end === '>' && age >= start) return true;
-      return age >= start && age < end;
-    });
-  
-    return matches.map(bin => {
-      if (bin.start === '<') return `${bin.start}${bin.end}`;
-      if (bin.end === '>') return `${bin.start}${bin.end}`;
-      return `${bin.start}-${bin.end}`;
-    });
-  };
-
-  const fetchAgeSettings = async () => {
+  const fetchStoredAgeBins = async () => {
     if (!hospitalId) return;
     
     try {
@@ -132,63 +75,104 @@ const AgeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
         .single();
 
       if (error) throw error;
-
       if (data?.age_settings) {
-        const settings = data.age_settings[doctorId] || data.age_settings['all'] || defaultAgeBins;
-        const binsWithIds = settings.map((bin, index) => ({
-          ...bin,
-          id: bin.id && bin.id.startsWith('bin-') ? bin.id : `bin-${index + 1}`
-        }));
-        const sortedBins = sortBins(binsWithIds);
+        const sortedBins = [...data.age_settings].sort((a, b) => {
+          if (a.start === '<') return -1;
+          if (b.start === '<') return 1;
+          if (a.end === '>') return 1;
+          if (b.end === '>') return -1;
+          return parseInt(a.start) - parseInt(b.start);
+        });
         setAgeBins(sortedBins);
         setTempBins(sortedBins);
-      } else {
-        const sortedDefaultBins = sortBins(defaultAgeBins);
-        setAgeBins(sortedDefaultBins);
-        setTempBins(sortedDefaultBins);
       }
     } catch (error) {
-      console.error('Error fetching age settings:', error);
+      console.error('Error fetching age bins:', error);
     }
   };
 
-  const saveAgeSettings = async () => {
-    if (!hospitalId) return;
-    
+  const saveAgeBins = async (bins) => {
     try {
-      const { data: currentSettings, error: fetchError } = await supabase
+      const sortedBins = bins.sort((a, b) => {
+        if (a.start === '<') return -1;
+        if (b.start === '<') return 1;
+        if (a.end === '>') return 1;
+        if (b.end === '>') return -1;
+        return parseInt(a.start) - parseInt(b.start);
+      });
+
+      const { error } = await supabase
         .from('hospitals')
-        .select('age_settings')
-        .eq('hospital_id', hospitalId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const sortedBins = sortBins(tempBins);
-      const updatedSettings = {
-        ...(currentSettings?.age_settings || {}),
-        [doctorId === 'all' ? 'all' : doctorId]: sortedBins
-      };
-
-      const { error: updateError } = await supabase
-        .from('hospitals')
-        .update({ age_settings: updatedSettings })
+        .update({ age_settings: sortedBins })
         .eq('hospital_id', hospitalId);
 
-      if (updateError) throw updateError;
-
+      if (error) throw error;
+      
+      // Update state immediately after successful save
       setAgeBins(sortedBins);
       setTempBins(sortedBins);
-      setShowUpdateButton(false);
-      await fetchAgeData();
     } catch (error) {
-      console.error('Error saving age settings:', error);
+      console.error('Error saving age bins:', error);
     }
+  };
+
+  const formatDate = (date) => {
+    const d = new Date(date);
+    return d.toISOString().split('.')[0].replace('T', ' ');
+  };
+
+  const getTimeRanges = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let currentStart, currentEnd;
+
+    switch (timeRange) {
+      case '1day':
+        currentStart = today;
+        currentEnd = now;
+        break;
+      case '1week':
+        currentStart = new Date(today.setDate(today.getDate() - 7));
+        currentEnd = now;
+        break;
+      case '1month':
+        currentStart = new Date(today.setMonth(today.getMonth() - 1));
+        currentEnd = now;
+        break;
+      case '3months':
+        currentStart = new Date(today.setMonth(today.getMonth() - 3));
+        currentEnd = now;
+        break;
+      case 'custom':
+        if (startDate && endDate) {
+          currentStart = new Date(startDate);
+          currentEnd = new Date(endDate);
+        }
+        break;
+      default:
+        currentStart = today;
+        currentEnd = now;
+    }
+
+    return { currentStart, currentEnd };
+  };
+
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
   };
 
   const fetchAgeData = async () => {
     if (!hospitalId || !doctorId) return;
-    
+
     try {
       setLoading(true);
       const { currentStart, currentEnd } = getTimeRanges();
@@ -203,279 +187,453 @@ const AgeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
           )
         `)
         .eq('hospital_id', hospitalId)
-        .gte('appointment_time', currentStart.toISOString())
-        .lte('appointment_time', currentEnd.toISOString());
-  
+        .gte('appointment_time', formatDate(currentStart))
+        .lte('appointment_time', formatDate(currentEnd));
+
       if (doctorId !== 'all') {
         query.eq('doctor_id', doctorId);
       }
-  
+
       const { data, error } = await query;
-      
       if (error) throw error;
-  
-      const ageGroups = {};
+
+      // Calculate age counts using current ageBins
+      const newAgeCounts = [...ageBins].map(bin => ({ ...bin, count: 0 }));
+      
       data.forEach(appointment => {
-        if (!appointment.patients?.date_of_birth) return;
-        
-        const age = calculateAge(appointment.patients.date_of_birth);
-        const matchingBuckets = getAgeBucket(age);
-        
-        matchingBuckets.forEach(bucket => {
-          ageGroups[bucket] = (ageGroups[bucket] || 0) + 1;
-        });
+        const age = calculateAge(appointment.patients?.date_of_birth);
+        if (age === null) return;
+
+        for (let bin of newAgeCounts) {
+          if (bin.start === '<' && age < parseInt(bin.end)) {
+            bin.count++;
+            break;
+          } else if (bin.end === '>' && age >= parseInt(bin.start)) {
+            bin.count++;
+            break;
+          } else if (age >= parseInt(bin.start) && age < parseInt(bin.end)) {
+            bin.count++;
+            break;
+          }
+        }
       });
-  
-      const sortedAgeGroups = ageBins.map(bin => {
-        const range = bin.start === '<' ? `${bin.start}${bin.end}` :
-                     bin.end === '>' ? `${bin.start}${bin.end}` :
-                     `${bin.start}-${bin.end}`;
-        return {
-          range,
-          count: ageGroups[range] || 0
-        };
-      });
-  
-      setAgeCounts(sortedAgeGroups);
+
+      setAgeCounts(newAgeCounts);
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching age data:', error);
-    } finally {
       setLoading(false);
     }
   };
 
-  const addNewBar = () => {
-    const maxId = tempBins.reduce((max, bin) => {
-      const id = parseInt(bin.id.replace('bin-', ''));
-      return isNaN(id) ? max : Math.max(max, id);
-    }, 0);
-    const newId = `bin-${maxId + 1}`;
-    const newBin = { id: newId, start: '0', end: '10', count: 0 };
-    const newBins = sortBins([...tempBins, newBin]);
-    setTempBins(newBins);
-    setShowUpdateButton(true);
+  const handleAddBin = () => {
+    const newBin = {
+      id: `bin-${tempBins.length + 1}`,
+      start: '',
+      end: '',
+      count: 0
+    };
+    setTempBins([...tempBins, newBin]);
   };
 
-  const deleteBar = (index) => {
-    const newBins = tempBins.filter((_, i) => i !== index);
-    setTempBins(newBins);
-    setShowUpdateButton(true);
+  const handleDeleteBin = (binId) => {
+    setTempBins(tempBins.filter(bin => bin.id !== binId));
   };
 
-  const handleBinChange = (index, field, value) => {
-    const newBins = [...tempBins];
-    newBins[index][field] = value;
-    const sortedBins = sortBins(newBins);
-    setTempBins(sortedBins);
-    setShowUpdateButton(true);
-    setEditingBin(null);
+  const handleBinChange = (binId, field, value) => {
+    setTempBins(tempBins.map(bin =>
+      bin.id === binId ? { ...bin, [field]: value } : bin
+    ));
   };
 
-  const calculatePercentages = (counts) => {
-    const total = counts.reduce((sum, group) => sum + group.count, 0);
-    return counts.map(group => ({
-      ...group,
-      percentage: total > 0 ? ((group.count / total) * 100).toFixed(1) : '0'
-    }));
+  const handleSaveBins = async () => {
+    await saveAgeBins(tempBins);
+    setOpenDialog(false);
   };
 
-  useEffect(() => {
-    if (hospitalId && doctorId) {
-      fetchAgeSettings();
-    }
-  }, [hospitalId, doctorId]);
+  const getVolumeColor = (count, maxCount) => {
+    const ratio = count / maxCount;
+    if (ratio >= 0.7) return 'rgba(52, 211, 153, 0.1)'; // Green for high volume
+    if (ratio >= 0.3) return 'rgba(59, 130, 246, 0.1)'; // Blue for medium volume
+    return 'rgba(239, 68, 68, 0.1)'; // Red for low volume
+  };
 
-  useEffect(() => {
-    if (hospitalId && doctorId && (timeRange !== 'custom' || (startDate && endDate))) {
-      fetchAgeData();
-    }
-  }, [hospitalId, doctorId, timeRange, startDate, endDate, ageBins]);
+  const getTextColor = (count, maxCount) => {
+    const ratio = count / maxCount;
+    if (ratio >= 0.7) return 'rgb(52, 211, 153)'; // Green text
+    if (ratio >= 0.3) return 'rgb(59, 130, 246)'; // Blue text
+    return 'rgb(239, 68, 68)'; // Red text
+  };
 
-  const maxCount = Math.max(...ageCounts.map(g => g.count), 1);
-  const barWidth = 60;
-  const spacing = 20;
-  const totalWidth = Math.max((barWidth + spacing) * ageCounts.length, 300);
+  const renderStatsPanel = () => {
+    const maxCount = Math.max(...ageCounts.map(bin => bin.count));
+    const totalCount = ageCounts.reduce((sum, bin) => sum + bin.count, 0);
 
-  const displayCounts = showPercentages ? calculatePercentages(ageCounts) : ageCounts;
-
-  return (
-    <div style={{
-      backgroundColor: '#1a1a1a',
-      borderRadius: '10px',
-      padding: '20px',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-      border: '1px solid #333',
-      display: 'inline-block',
-      width: `${Math.max(600, (tempBins.length * (barWidth + spacing)) + 100)}px`,
-      height: 'fit-content',
-      marginTop: '20px',
-      position: 'relative'
-    }}>
-      <div style={{ 
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        display: 'flex',
-        gap: '10px',
-        alignItems: 'center'
-      }}>
-        <button
-          onClick={addNewBar}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#2ecc71',
-            color: 'white',
-            border: 'none',
+    return (
+      <Box 
+        sx={{
+          width: '280px',
+          height: '300px',
+          overflowY: 'auto',
+          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+          borderRadius: '8px',
+          padding: '16px',
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'rgba(255, 255, 255, 0.1)',
             borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          Add Age Group
-        </button>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#fff' }}>
-          Show %
-          <input
-            type="checkbox"
-            checked={showPercentages}
-            onChange={(e) => setShowPercentages(e.target.checked)}
-          />
-        </label>
-      </div>
-
-      <h3 style={{ margin: '0 0 20px 0', color: '#fff' }}>Age Distribution</h3>
-      
-      {loading ? (
-        <div style={{ color: '#fff' }}>Loading...</div>
-      ) : (
-        <div>
-          <div style={{ 
-            position: 'relative',
-            height: '400px',
-            width: '100%',
-            display: 'flex',
-            alignItems: 'flex-end',
-            marginBottom: '40px',
-            overflowX: 'auto',
-            paddingBottom: '20px'
-          }}>
-            {tempBins.map((bin, index) => (
-              <div
-                key={bin.id}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  marginRight: spacing,
-                  position: 'relative'
-                }}
-              >
-                <button
-                  onClick={() => deleteBar(index)}
-                  style={{
-                    position: 'absolute',
-                    top: '-25px',
-                    right: '0',
-                    backgroundColor: '#e74c3c',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    padding: '4px 8px',
-                    cursor: 'pointer',
-                    fontSize: '12px'
-                  }}
-                >
-                  ✕
-                </button>
-                <div style={{
-                  width: barWidth,
-                  height: `${(displayCounts[index]?.count || 0) / maxCount * 300}px`,
-                  backgroundColor: colors[index % colors.length],
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'flex-start',
-                  padding: '5px',
-                  color: 'white',
-                  borderRadius: '4px 4px 0 0',
-                  minHeight: '30px',
-                  transition: 'all 0.3s ease'
-                }}>
-                  {showPercentages 
-                    ? `${displayCounts[index]?.percentage || 0}%`
-                    : displayCounts[index]?.count || 0}
-                </div>
-                <div style={{
-                  marginTop: '10px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  color: '#fff'
-                }}>
-                  {editingBin?.id === bin.id && editingBin?.field === 'start' ? (
-                    <input
-                      type="text"
-                      defaultValue={bin.start}
-                      onBlur={(e) => handleBinChange(index, 'start', e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          handleBinChange(index, 'start', e.target.value);
-                        }
-                      }}
-                      autoFocus
-                      style={{ width: '40px', background: '#333', color: '#fff', border: '1px solid #555' }}
-                    />
-                  ) : (
-                    <span
-                      onClick={() => setEditingBin({ id: bin.id, field: 'start' })}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {bin.start}
-                    </span>
-                  )}
-                  <span>-</span>
-                  {editingBin?.id === bin.id && editingBin?.field === 'end' ? (
-                    <input
-                      type="text"
-                      defaultValue={bin.end}
-                      onBlur={(e) => handleBinChange(index, 'end', e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          handleBinChange(index, 'end', e.target.value);
-                        }
-                      }}
-                      autoFocus
-                      style={{ width: '40px', background: '#333', color: '#fff', border: '1px solid #555' }}
-                    />
-                  ) : (
-                    <span
-                      onClick={() => setEditingBin({ id: bin.id, field: 'end' })}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {bin.end}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          {showUpdateButton && (
-            <button
-              onClick={saveAgeSettings}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#3498db',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                marginTop: '10px'
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+          },
+        }}
+      >
+        {ageCounts.map((bin) => {
+          const percentage = totalCount > 0 ? ((bin.count / totalCount) * 100).toFixed(1) : '0';
+          return (
+            <Box
+              key={bin.id}
+              sx={{
+                backgroundColor: getVolumeColor(bin.count, maxCount),
+                padding: '12px',
+                borderRadius: '8px',
+                marginBottom: '8px',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                },
               }}
             >
-              Save Changes
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+              <Typography
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  marginBottom: '4px',
+                }}
+              >
+                Age {bin.start}-{bin.end}
+              </Typography>
+              <Typography
+                sx={{
+                  color: getTextColor(bin.count, maxCount),
+                  fontSize: '1.125rem',
+                  fontWeight: 600,
+                }}
+              >
+                {bin.count} patients ({percentage}%)
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
+  const renderCustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const { name, count, percentage } = payload[0].payload;
+      return (
+        <Paper
+          sx={{
+            backgroundColor: 'rgba(30, 32, 35, 0.9)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '12px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.875rem' }}>
+            {name}
+          </Typography>
+          <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.875rem' }}>
+            Count: {count}
+          </Typography>
+          <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.875rem' }}>
+            Percentage: {percentage}%
+          </Typography>
+        </Paper>
+      );
+    }
+    return null;
+  };
+
+  const totalCount = ageCounts.reduce((sum, bin) => sum + bin.count, 0);
+
+  const chartData = ageCounts.map(bin => {
+    const percentage = totalCount > 0 ? (bin.count / totalCount) * 100 : 0;
+    return {
+      name: `${bin.start}-${bin.end}`,
+      count: bin.count,
+      percentage: parseFloat(percentage.toFixed(1)),
+    };
+  });
+  const renderCustomDialog = () => {
+    return (
+      <Dialog 
+        open={openDialog} 
+        onClose={() => setOpenDialog(false)}
+        PaperProps={{
+          sx: {
+            backgroundColor: '#1E2023',
+            color: 'white',
+            minWidth: '400px'
+          }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          Customize Age Groups
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {tempBins.map((bin, index) => (
+            <Box 
+              key={bin.id} 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1, 
+                mb: 2 
+              }}
+            >
+              <TextField
+                label="Start Age"
+                value={bin.start}
+                onChange={(e) => handleBinChange(bin.id, 'start', e.target.value)}
+                size="small"
+                sx={{
+                  width: '100px',
+                  '& .MuiOutlinedInput-root': {
+                    color: 'white',
+                    '& fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.23)',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'rgba(255, 255, 255, 0.7)',
+                  },
+                }}
+              />
+              <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>to</Typography>
+              <TextField
+                label="End Age"
+                value={bin.end}
+                onChange={(e) => handleBinChange(bin.id, 'end', e.target.value)}
+                size="small"
+                sx={{
+                  width: '100px',
+                  '& .MuiOutlinedInput-root': {
+                    color: 'white',
+                    '& fieldset': {
+                      borderColor: 'rgba(255, 255, 255, 0.23)',
+                    },
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'rgba(255, 255, 255, 0.7)',
+                  },
+                }}
+              />
+              <IconButton 
+                onClick={() => handleDeleteBin(bin.id)}
+                disabled={tempBins.length <= 1}
+                sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+              >
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+          ))}
+          <Button
+            startIcon={<AddIcon />}
+            onClick={handleAddBin}
+            sx={{
+              mt: 1,
+              color: 'white',
+              borderColor: 'rgba(255, 255, 255, 0.23)',
+              '&:hover': {
+                borderColor: 'white',
+              },
+            }}
+            variant="outlined"
+          >
+            Add Age Group
+          </Button>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', p: 2 }}>
+          <Button 
+            onClick={() => setOpenDialog(false)}
+            sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveBins}
+            variant="contained"
+            sx={{
+              background: 'linear-gradient(45deg, #4158D0 30%, #C850C0 90%)',
+              color: 'white',
+            }}
+          >
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+
+  if (loading) {
+    return (
+      <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+        Loading...
+      </Typography>
+    );
+  }
+
+  return (
+    <Box sx={{ 
+      backgroundColor: '#1E2023', 
+      padding: '24px',
+      borderRadius: '12px',
+      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+    }}>
+      {renderCustomDialog()}
+      <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+        <Button 
+          variant="contained"
+          onClick={() => setOpenDialog(true)}
+          sx={{
+            backgroundColor: '#2196F3',
+            '&:hover': {
+              backgroundColor: '#1976D2',
+            },
+            color: 'white',
+            boxShadow: '0 3px 5px 2px rgba(33, 150, 243, .3)',
+          }}
+        >
+          Customize Age Groups
+        </Button>
+        <Button 
+          variant="contained"
+          onClick={() => setShowPercentages(!showPercentages)}
+          sx={{
+            backgroundColor: '#2196F3',
+            '&:hover': {
+              backgroundColor: '#1976D2',
+            },
+            color: 'white',
+            boxShadow: '0 3px 5px 2px rgba(33, 150, 243, .3)',
+          }}
+        >
+          Show {showPercentages ? 'Counts' : 'Percentages'}
+        </Button>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 3 }}>
+        <Box sx={{ flex: 1 }}>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart 
+              data={chartData}
+              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            >
+              <XAxis 
+                dataKey="name" 
+                tick={{ fill: 'rgba(255, 255, 255, 0.7)' }}
+              />
+              <YAxis 
+                domain={showPercentages ? [0, 100] : [0, 'auto']}
+                tick={{ fill: 'rgba(255, 255, 255, 0.7)' }}
+                padding={{ top: 20 }}
+              />
+              <Tooltip content={renderCustomTooltip} />
+              <Bar 
+                dataKey={showPercentages ? 'percentage' : 'count'} 
+                radius={[4, 4, 0, 0]}
+              >
+                {
+                  chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={barColors[index % barColors.length]}
+                      opacity={0.8}
+                    />
+                  ))
+                }
+                <LabelList
+                  dataKey={showPercentages ? 'percentage' : 'count'}
+                  position="top"
+                  fill="rgba(255, 255, 255, 0.9)"
+                  formatter={(value) => showPercentages ? `${value}%` : value}
+                  dy={-4}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </Box>
+        {/* Update the stats panel to match the bar colors */}
+        <Box 
+          sx={{
+            width: '280px',
+            height: '300px',
+            overflowY: 'auto',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '8px',
+            padding: '16px',
+            '&::-webkit-scrollbar': {
+              width: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'rgba(255, 255, 255, 0.2)',
+              borderRadius: '4px',
+            },
+          }}
+        >
+          {ageCounts.map((bin, index) => {
+            const percentage = totalCount > 0 ? ((bin.count / totalCount) * 100).toFixed(1) : '0';
+            return (
+              <Box
+                key={bin.id}
+                sx={{
+                  backgroundColor: `${barColors[index % barColors.length]}15`, // Using color with 15% opacity
+                  padding: '12px',
+                  borderRadius: '8px',
+                  marginBottom: '8px',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                  },
+                }}
+              >
+                <Typography
+                  sx={{
+                    color: 'rgba(255, 255, 255, 0.9)',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    marginBottom: '4px',
+                  }}
+                >
+                  Age {bin.start}-{bin.end}
+                </Typography>
+                <Typography
+                  sx={{
+                    color: barColors[index % barColors.length],
+                    fontSize: '1.125rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {bin.count} patients ({percentage}%)
+                </Typography>
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    </Box>
   );
 };
 

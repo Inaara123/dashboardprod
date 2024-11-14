@@ -1,4 +1,3 @@
-// src/components/widgets/CorrelationsBoard.js
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { HeatMapGrid } from 'react-grid-heatmap';
@@ -7,7 +6,7 @@ import PropTypes from 'prop-types';
 import { supabase } from '../../supabaseClient';
 
 const WidgetContainer = styled.div`
-  background-color: #1e1e1e;
+  background-color: #131517;
   padding: 20px;
   border-radius: 15px;
   color: #fff;
@@ -40,6 +39,15 @@ const HeatmapContainer = styled.div`
   height: auto;
 `;
 
+const ErrorMessage = styled.div`
+  color: #ff6b6b;
+  padding: 20px;
+  text-align: center;
+  background-color: rgba(255, 107, 107, 0.1);
+  border-radius: 8px;
+  margin: 10px 0;
+`;
+
 const BreakdownContainer = styled.div`
   margin-top: 20px;
   padding: 20px;
@@ -67,7 +75,7 @@ const BreakdownItem = styled.div`
 
 const PercentageBar = styled.div`
   height: 8px;
-  background-color: rgba(128, 0, 128, 0.3);
+  background-color: rgba(0, 128, 255, 0.3);
   border-radius: 4px;
   margin-left: 10px;
   flex: 1;
@@ -80,181 +88,180 @@ const PercentageBar = styled.div`
     top: 0;
     height: 100%;
     width: ${props => props.percentage}%;
-    background-color: purple;
+    background-color: #0080ff;
     border-radius: 4px;
     transition: width 0.3s ease;
   }
 `;
 
-const ErrorMessage = styled.div`
-  color: #ff6b6b;
-  padding: 20px;
-  text-align: center;
-  background-color: rgba(255, 107, 107, 0.1);
-  border-radius: 8px;
-  margin: 10px 0;
-`;
-
 const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
-  const [state, setState] = useState({
-    showPercentage: true,
-    heatmapData: [],
-    totalPatients: 0,
-    locations: ['Male', 'Female'],
-    discoveryChannels: ['Google', 'Facebook', 'Instagram', 'Friends and Family', 'Other'],
-    isLoading: true,
-    error: null,
-    genderBreakdown: { male: {}, female: {} },
-    genderTotals: { male: 0, female: 0 }
+  const [showPercentage, setShowPercentage] = useState(true);
+  const [data, setData] = useState({
+    male: { total: 0, channels: {} },
+    female: { total: 0, channels: {} }
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const getTimeRangeFilter = () => {
+  const getTimeRanges = () => {
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let currentStart, currentEnd, previousStart, previousEnd;
+
     switch (timeRange) {
       case '1day':
-        return new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        currentStart = today;
+        currentEnd = now;
+        previousStart = new Date(today.setDate(today.getDate() - 1));
+        previousEnd = today;
+        break;
       case '1week':
-        return new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+        currentStart = new Date(today.setDate(today.getDate() - 7));
+        currentEnd = now;
+        previousStart = new Date(currentStart.setDate(currentStart.getDate() - 7));
+        previousEnd = currentStart;
+        break;
       case '1month':
-        return new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+        currentStart = new Date(today.setMonth(today.getMonth() - 1));
+        currentEnd = now;
+        previousStart = new Date(currentStart.setMonth(currentStart.getMonth() - 1));
+        previousEnd = currentStart;
+        break;
       case '3months':
-        return new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
+        currentStart = new Date(today.setMonth(today.getMonth() - 3));
+        currentEnd = now;
+        previousStart = new Date(currentStart.setMonth(currentStart.getMonth() - 3));
+        previousEnd = currentStart;
+        break;
       case 'custom':
-        return startDate ? new Date(startDate).toISOString() : null;
+        currentStart = new Date(startDate);
+        currentEnd = new Date(endDate);
+        const duration = currentEnd - currentStart;
+        previousStart = new Date(currentStart - duration);
+        previousEnd = currentStart;
+        break;
       default:
-        return new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        currentStart = today;
+        currentEnd = now;
+        previousStart = new Date(today.setDate(today.getDate() - 1));
+        previousEnd = today;
     }
+
+    return { currentStart, currentEnd };
+  };
+
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
   };
 
   useEffect(() => {
-    let isMounted = true;
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
 
-    const fetchCorrelationData = async () => {
-      try {
-        setState(prev => ({ ...prev, isLoading: true, error: null }));
-        let query = supabase
-          .from('appointments')
-          .select(`
-            patient_id,
-            patients!inner(
-              gender,
-              how_did_you_get_to_know_us
-            )
-          `)
-          .eq('hospital_id', hospitalId);
+      const { currentStart, currentEnd } = getTimeRanges();
+      let query = supabase
+        .from('appointments')
+        .select(`
+          patient_id,
+          appointment_time,
+          patients!inner(
+            gender,
+            how_did_you_get_to_know_us
+          )
+        `)
+        .eq('hospital_id', hospitalId)
+        .gte('appointment_time', formatDate(currentStart))
+        .lte('appointment_time', formatDate(currentEnd));
 
-        if (doctorId !== 'all') {
-          query = query.eq('doctor_id', doctorId);
-        }
-
-        if (timeRange === 'custom' && startDate && endDate) {
-          query = query
-            .gte('appointment_time', startDate)
-            .lte('appointment_time', endDate);
-        } else {
-          const timeFilter = getTimeRangeFilter();
-          if (timeFilter) {
-            query = query.gte('appointment_time', timeFilter);
-          }
-        }
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        if (isMounted) {
-          const matrix = {};
-          const breakdown = { male: {}, female: {} };
-          const totals = { male: 0, female: 0 };
-          let totalCount = 0;
-          const uniqueGenders = new Set();
-          const uniqueDiscoveries = new Set();
-
-          data.forEach(appointment => {
-            const gender = appointment.patients.gender;
-            const discovery = appointment.patients.how_did_you_get_to_know_us;
-
-            uniqueGenders.add(gender);
-            uniqueDiscoveries.add(discovery);
-
-            if (!matrix[gender]) matrix[gender] = {};
-            if (!matrix[gender][discovery]) matrix[gender][discovery] = 0;
-            if (!breakdown[gender.toLowerCase()]) breakdown[gender.toLowerCase()] = {};
-            if (!breakdown[gender.toLowerCase()][discovery]) breakdown[gender.toLowerCase()][discovery] = 0;
-            
-            matrix[gender][discovery]++;
-            breakdown[gender.toLowerCase()][discovery]++;
-            totals[gender.toLowerCase()]++;
-            totalCount++;
-          });
-
-          const heatmapArray = [...uniqueGenders].map(gender =>
-            [...uniqueDiscoveries].map(discovery => matrix[gender]?.[discovery] || 0)
-          );
-
-          setState(prev => ({
-            ...prev,
-            heatmapData: heatmapArray,
-            locations: [...uniqueGenders],
-            discoveryChannels: [...uniqueDiscoveries],
-            genderBreakdown: breakdown,
-            genderTotals: totals,
-            totalPatients: totalCount,
-            isLoading: false
-          }));
-        }
-      } catch (error) {
-        if (isMounted) {
-          setState(prev => ({
-            ...prev,
-            error: error.message,
-            isLoading: false
-          }));
-        }
+      if (doctorId !== 'all') {
+        query = query.eq('doctor_id', doctorId);
       }
+
+      const { data: appointments, error: queryError } = await query;
+      if (queryError) {
+        setError(queryError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      const result = {
+        male: { total: 0, channels: {} },
+        female: { total: 0, channels: {} }
+      };
+
+      appointments.forEach(appointment => {
+        const gender = appointment.patients.gender.toLowerCase();
+        const channel = appointment.patients.how_did_you_get_to_know_us;
+
+        if (gender in result) {
+          result[gender].total++;
+          result[gender].channels[channel] = (result[gender].channels[channel] || 0) + 1;
+        }
+      });
+
+      setData(result);
+      setIsLoading(false);
     };
 
-    fetchCorrelationData();
+    fetchData();
+  }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [hospitalId, doctorId, timeRange, startDate, endDate, supabase]);
-
-  if (state.isLoading) {
+  if (isLoading) {
     return (
       <WidgetContainer>
-        <WidgetTitle>Gender vs Discovery</WidgetTitle>
+        <WidgetTitle>Discovery Channel Distribution</WidgetTitle>
         <div style={{ textAlign: 'center', padding: '20px' }}>Loading...</div>
       </WidgetContainer>
     );
   }
 
-  if (state.error) {
+  if (error) {
     return (
       <WidgetContainer>
-        <WidgetTitle>Gender vs Discovery</WidgetTitle>
-        <ErrorMessage>Error: {state.error}</ErrorMessage>
+        <WidgetTitle>Discovery Channel Distribution</WidgetTitle>
+        <ErrorMessage>Error: {error}</ErrorMessage>
       </WidgetContainer>
     );
   }
 
-  const formattedData = state.heatmapData?.map((row) =>
-    row.map((value) => (state.showPercentage ? ((value / state.totalPatients) * 100).toFixed(2) : value))
-  ) || [];
+  const channels = [...new Set(
+    [...Object.keys(data.male.channels), ...Object.keys(data.female.channels)]
+  )].sort();
 
-  const maxValue = Math.max(...(state.heatmapData?.flat() || [0]));
+  const maxValue = Math.max(
+    ...Object.values(data.male.channels),
+    ...Object.values(data.female.channels),
+    1
+  );
 
-  const renderBreakdown = (gender, total) => {
-    if (!state.genderBreakdown[gender.toLowerCase()]) return null;
-    
-    return Object.entries(state.genderBreakdown[gender.toLowerCase()])
+  const formattedData = ['male', 'female'].map(gender =>
+    channels.map(channel => {
+      const count = data[gender].channels[channel] || 0;
+      const total = data[gender].total || 1;
+      return showPercentage ? ((count / total) * 100).toFixed(1) : count;
+    })
+  );
+
+  const renderBreakdown = (gender) => {
+    const genderData = data[gender.toLowerCase()];
+    if (!genderData || !genderData.total) return null;
+
+    return Object.entries(genderData.channels)
       .sort(([, a], [, b]) => b - a)
-      .map(([channel, value]) => {
-        const percentage = ((value / total) * 100).toFixed(1);
+      .map(([channel, count]) => {
+        const percentage = ((count / genderData.total) * 100).toFixed(1);
         return (
           <BreakdownItem key={`${gender}-${channel}`}>
-            {percentage}% of {gender}s discover your clinic through {channel}
+            {percentage}% of {gender}s discovered through {channel}
             <PercentageBar percentage={percentage} />
           </BreakdownItem>
         );
@@ -264,10 +271,10 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
   return (
     <WidgetContainer>
       <WidgetTitle>
-        Gender vs Discovery
+        Discovery Channel Distribution
         <Switch
-          onChange={() => setState(prev => ({ ...prev, showPercentage: !prev.showPercentage }))}
-          checked={state.showPercentage}
+          onChange={() => setShowPercentage(!showPercentage)}
+          checked={showPercentage}
           offColor="#888"
           onColor="#66ff66"
           uncheckedIcon={false}
@@ -277,11 +284,17 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
       <HeatmapContainer>
         <HeatMapGrid
           data={formattedData}
-          xLabels={state.discoveryChannels}
-          yLabels={state.locations}
+          xLabels={channels}
+          yLabels={['Male', 'Female']}
           cellRender={(x, y, value) => (
-            <div title={`Gender: ${state.locations[y]}, Discovery Channel: ${state.discoveryChannels[x]} = ${value}${state.showPercentage ? '%' : ''}`}>
-              {value}{state.showPercentage ? '%' : ''}
+            <div style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {value}{showPercentage ? '%' : ''}
             </div>
           )}
           xLabelsStyle={() => ({
@@ -293,16 +306,35 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
             color: '#ffffff',
             marginRight: '15px',
           })}
-          cellStyle={(x, y) => {
-            const rawValue = state.heatmapData[y]?.[x] || 0;
-            const alpha = maxValue > 0 ? rawValue / maxValue : 0;
-            return {
-              background: `rgba(128, 0, 128, ${Math.min(Math.max(alpha, 0.1), 1)})`,
-              fontSize: '0.9rem',
-              color: 'white',
-              border: '1px solid #ffffff',
-            };
-          }}
+// In the return statement, modify the HeatMapGrid component's cellStyle prop:
+
+cellStyle={(x, y) => {
+  try {
+    const genderIndex = ['male', 'female'][x];
+    const currentChannel = channels[y];
+    
+    // Safely access the data
+    const rawValue = data[genderIndex]?.channels[currentChannel] || 0;
+    const alpha = maxValue > 0 ? rawValue / maxValue : 0;
+    
+    return {
+      background: `rgba(0, 128, 255, ${Math.min(Math.max(alpha, 0.1), 1)})`,
+      fontSize: '0.9rem',
+      color: 'white',
+      border: '1px solid #ffffff',
+      transition: 'all 0.3s ease'
+    };
+  } catch (error) {
+    // Fallback style if there's any error
+    return {
+      background: `rgba(0, 128, 255, 0.1)`,
+      fontSize: '0.9rem',
+      color: 'white',
+      border: '1px solid #ffffff',
+      transition: 'all 0.3s ease'
+    };
+  }
+}}
           cellHeight="5.5rem"
           xLabelsPos="top"
           yLabelsPos="left"
@@ -315,22 +347,12 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
         />
         <div style={{ textAlign: 'center', marginTop: '10px' }}>
           <span style={{ color: '#a5a5a5' }}>
-            {state.showPercentage ? 'Showing Percentages' : 'Showing Actual Values'}
+            {showPercentage ? 'Showing Percentages' : 'Showing Actual Values'}
           </span>
         </div>
       </HeatmapContainer>
 
-      <BreakdownContainer>
-        <GenderSection>
-          <GenderTitle>Male Distribution</GenderTitle>
-          {renderBreakdown('Male', state.genderTotals.male)}
-        </GenderSection>
-        
-        <GenderSection>
-          <GenderTitle>Female Distribution</GenderTitle>
-          {renderBreakdown('Female', state.genderTotals.female)}
-        </GenderSection>
-      </BreakdownContainer>
+
     </WidgetContainer>
   );
 };

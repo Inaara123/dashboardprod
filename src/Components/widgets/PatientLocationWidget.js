@@ -1,5 +1,4 @@
-// src/components/widgets/PatientLocationWidget.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Circle, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../../supabaseClient';
@@ -29,6 +28,8 @@ const patientIcon = new L.Icon({
 });
 
 const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [hospitalData, setHospitalData] = useState(null);
   const [patientLocations, setPatientLocations] = useState([]);
   const [statistics, setStatistics] = useState({
@@ -40,7 +41,44 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
     total: 0,
   });
 
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  // Memoize hospital position
+  const hospitalPosition = useMemo(() => {
+    if (!hospitalData?.location?.coordinates) return null;
+    return [hospitalData.location.coordinates[1], hospitalData.location.coordinates[0]];
+  }, [hospitalData]);
+
+  // Memoize circles
+  const circles = useMemo(() => {
+    if (!hospitalPosition) return [];
+    return [1, 2, 3, 4, 5].map(radius => (
+      <Circle
+        key={radius}
+        center={hospitalPosition}
+        radius={radius * 1000}
+        pathOptions={{ 
+          color: '#3388ff',
+          fillColor: '#3388ff',
+          fillOpacity: 0.1,
+          weight: 1
+        }}
+      />
+    ));
+  }, [hospitalPosition]);
+
+  // Memoize patient markers
+  const patientMarkers = useMemo(() => {
+    return patientLocations.map((patient, index) => (
+      <Marker
+        key={`patient-${index}`}
+        position={[patient.latitude, patient.longitude]}
+        icon={patientIcon}
+      />
+    ));
+  }, [patientLocations]);
+
+  const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    
     const R = 6371; // Earth's radius in km
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -50,61 +88,70 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
       Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
-  };
+  }, []);
+
+  const getTimeRangeDate = useCallback(() => {
+    const now = new Date();
+    if (timeRange === 'custom' && startDate && endDate) {
+      return { startDateTime: new Date(startDate), endDateTime: new Date(endDate) };
+    }
+
+    const timeRanges = {
+      '1day': now.setDate(now.getDate() - 1),
+      '1week': now.setDate(now.getDate() - 7),
+      '1month': now.setMonth(now.getMonth() - 1),
+      '3months': now.setMonth(now.getMonth() - 3),
+    };
+
+    return {
+      startDateTime: new Date(timeRanges[timeRange] || timeRanges['1day']),
+      endDateTime: new Date()
+    };
+  }, [timeRange, startDate, endDate]);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchData = async () => {
       try {
+        setLoading(true);
+        setError(null);
+
         // Fetch hospital data
-        const { data: hospitalData, error: hospitalError } = await supabase
+        const { data: hospital, error: hospitalError } = await supabase
           .from('hospitals')
           .select('name, location')
           .eq('hospital_id', hospitalId)
           .single();
 
         if (hospitalError) throw hospitalError;
-        setHospitalData(hospitalData);
+        if (!isMounted) return;
+
+        // Validate hospital coordinates
+        if (!hospital?.location?.coordinates?.length === 2) {
+          throw new Error('Invalid hospital coordinates');
+        }
+
+        setHospitalData(hospital);
+
+        // Get time range
+        const { startDateTime, endDateTime } = getTimeRangeDate();
 
         // Build appointments query
-        let query = supabase
+        const appointmentsQuery = supabase
           .from('appointments')
           .select('patient_id')
-          .eq('hospital_id', hospitalId);
+          .eq('hospital_id', hospitalId)
+          .gte('appointment_time', startDateTime.toISOString())
+          .lte('appointment_time', endDateTime.toISOString());
 
         if (doctorId !== 'all') {
-          query = query.eq('doctor_id', doctorId);
+          appointmentsQuery.eq('doctor_id', doctorId);
         }
 
-        // Handle time range
-        const now = new Date();
-        let startDateTime;
-        if (timeRange === 'custom' && startDate && endDate) {
-          startDateTime = new Date(startDate);
-          query = query
-            .gte('appointment_time', startDate)
-            .lte('appointment_time', endDate);
-        } else {
-          switch (timeRange) {
-            case '1day':
-              startDateTime = new Date(now.setDate(now.getDate() - 1));
-              break;
-            case '1week':
-              startDateTime = new Date(now.setDate(now.getDate() - 7));
-              break;
-            case '1month':
-              startDateTime = new Date(now.setMonth(now.getMonth() - 1));
-              break;
-            case '3months':
-              startDateTime = new Date(now.setMonth(now.getMonth() - 3));
-              break;
-            default:
-              startDateTime = new Date(now.setDate(now.getDate() - 1));
-          }
-          query = query.gte('appointment_time', startDateTime.toISOString());
-        }
-
-        const { data: appointments, error: appointmentsError } = await query;
+        const { data: appointments, error: appointmentsError } = await appointmentsQuery;
         if (appointmentsError) throw appointmentsError;
+        if (!isMounted) return;
 
         // Fetch patient locations
         const patientIds = appointments.map(app => app.patient_id);
@@ -114,9 +161,11 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
           .in('patient_id', patientIds);
 
         if (patientsError) throw patientsError;
+        if (!isMounted) return;
 
         // Calculate statistics
-        const hospitalCoords = hospitalData.location.coordinates;
+        const [hospitalLon, hospitalLat] = hospital.location.coordinates;
+        
         const stats = {
           lessThan1km: 0,
           oneToTwoKm: 0,
@@ -126,18 +175,18 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
           total: patients.length,
         };
 
-        const validPatientLocations = patients.filter(patient => {
-          if (!patient.latitude || !patient.longitude) {
-            stats.nanValues++;
-            return false;
-          }
-
+        const validPatients = patients.filter(patient => {
           const distance = calculateDistance(
-            hospitalCoords[1],
-            hospitalCoords[0],
+            hospitalLat,
+            hospitalLon,
             patient.latitude,
             patient.longitude
           );
+
+          if (distance === null) {
+            stats.nanValues++;
+            return false;
+          }
 
           if (distance < 1) stats.lessThan1km++;
           else if (distance < 2) stats.oneToTwoKm++;
@@ -147,67 +196,66 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
           return true;
         });
 
-        setPatientLocations(validPatientLocations);
+        if (!isMounted) return;
+        
+        setPatientLocations(validPatients);
         setStatistics(stats);
-
-      } catch (error) {
-        console.error('Error fetching data:', error);
+        
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message);
+          console.error('Error fetching data:', err);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
-  }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
-  if (!hospitalData) return <div>Loading...</div>;
+    return () => {
+      isMounted = false;
+    };
+  }, [hospitalId, doctorId, timeRange, startDate, endDate, calculateDistance, getTimeRangeDate]);
 
-  const hospitalPosition = [hospitalData.location.coordinates[1], hospitalData.location.coordinates[0]];
+  if (loading) {
+    return <div className="loading-spinner">Loading map data...</div>;
+  }
+
+  if (error) {
+    return <div className="error-message">Error loading map: {error}</div>;
+  }
+
+  if (!hospitalPosition) {
+    return <div className="error-message">Invalid hospital location data</div>;
+  }
 
   return (
-    <div style={{ height: '600px', width: '100%' }}>
+    <div className="patient-location-widget">
       <h2>{hospitalData.name} - Patient Distribution</h2>
-      <div style={{ height: '400px', marginBottom: '20px' }}>
+      
+      <div className="map-container">
         <MapContainer
           center={hospitalPosition}
           zoom={13}
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '400px', width: '100%' }}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
           
-          {/* Hospital Marker */}
           <Marker position={hospitalPosition} icon={hospitalIcon}>
             <Popup>{hospitalData.name}</Popup>
           </Marker>
 
-          {/* Concentric Circles */}
-          {[1, 2, 3, 4, 5].map(radius => (
-            <Circle
-              key={radius}
-              center={hospitalPosition}
-              radius={radius * 1000}
-              pathOptions={{ 
-                color: '#3388ff',
-                fillColor: '#3388ff',
-                fillOpacity: 0.1,
-                weight: 1
-              }}
-            />
-          ))}
-
-          {/* Patient Markers */}
-          {patientLocations.map((patient, index) => (
-            <Marker
-              key={index}
-              position={[patient.latitude, patient.longitude]}
-              icon={patientIcon}
-            />
-          ))}
+          {circles}
+          {patientMarkers}
         </MapContainer>
       </div>
 
-      {/* Statistics */}
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: 'repeat(5, 1fr)',
@@ -215,28 +263,24 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
         textAlign: 'center',
         padding: '20px',
         backgroundColor: '#f8f9fa',
-        borderRadius: '8px'
+        borderRadius: '8px',
+        marginTop: '20px'
       }}>
-        <div>
-          <h4>Less than 1km</h4>
-          <p>{statistics.lessThan1km} ({((statistics.lessThan1km/statistics.total)*100).toFixed(1)}%)</p>
-        </div>
-        <div>
-          <h4>1-2 km</h4>
-          <p>{statistics.oneToTwoKm} ({((statistics.oneToTwoKm/statistics.total)*100).toFixed(1)}%)</p>
-        </div>
-        <div>
-          <h4>2-5 km</h4>
-          <p>{statistics.twoToFiveKm} ({((statistics.twoToFiveKm/statistics.total)*100).toFixed(1)}%)</p>
-        </div>
-        <div>
-          <h4>More than 5km</h4>
-          <p>{statistics.moreThanFiveKm} ({((statistics.moreThanFiveKm/statistics.total)*100).toFixed(1)}%)</p>
-        </div>
-        <div>
-          <h4>NaN Values</h4>
-          <p>{statistics.nanValues} ({((statistics.nanValues/statistics.total)*100).toFixed(1)}%)</p>
-        </div>
+        {Object.entries(statistics).map(([key, value]) => (
+          <div key={key} style={{
+            padding: '10px',
+            backgroundColor: 'white',
+            borderRadius: '4px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+          }}>
+            <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>
+              {key.replace(/([A-Z])/g, ' $1').trim()}
+            </h4>
+            <p style={{ margin: 0, color: '#666' }}>
+              {value} ({((value/statistics.total)*100).toFixed(1)}%)
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );

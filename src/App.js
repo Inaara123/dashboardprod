@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Components/Login';
 import Home from './Components/Home';
+import AIBot from './Components/AIBot'; // Create this component
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './Components/ProtectedRoute';
 
@@ -17,6 +18,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Home />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/aibot" 
+            element={
+              <ProtectedRoute>
+                <AIBot />
               </ProtectedRoute>
             } 
           />

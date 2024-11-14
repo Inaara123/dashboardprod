@@ -7,7 +7,7 @@ import PropTypes from 'prop-types';
 import { supabase } from '../../supabaseClient';
 
 const WidgetContainer = styled.div`
-  background-color: #1e1e1e;
+  background-color: #131517;
   padding: 20px;
   border-radius: 15px;
   color: #fff;
@@ -311,17 +311,7 @@ const GenderVsBooking = ({ hospitalId, doctorId, timeRange, startDate, endDate }
         </div>
       </HeatmapContainer>
 
-      <BreakdownContainer>
-        <GenderSection>
-          <GenderTitle>Male Distribution</GenderTitle>
-          {renderBreakdown('Male', state.genderTotals.male)}
-        </GenderSection>
-        
-        <GenderSection>
-          <GenderTitle>Female Distribution</GenderTitle>
-          {renderBreakdown('Female', state.genderTotals.female)}
-        </GenderSection>
-      </BreakdownContainer>
+
     </WidgetContainer>
   );
 };

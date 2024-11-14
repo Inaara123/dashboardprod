@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { HeatMapGrid } from 'react-grid-heatmap';
 import Switch from 'react-switch';
@@ -6,11 +6,12 @@ import PropTypes from 'prop-types';
 import { supabase } from '../../supabaseClient';
 
 const WidgetContainer = styled.div`
-  background-color: #1e1e1e;
+  background-color: #131517;
   padding: 20px;
   border-radius: 15px;
   color: #fff;
-  width: 100%;
+  width: 80%;
+  margin-left: 75px;
   height: auto;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
@@ -21,9 +22,7 @@ const YLabelContainer = styled.div`
   align-items: center;
   padding-right: 10px;
   justify-content: flex-end;
-  width: 150px;
-  font-size: 0.8rem;
-  line-height: 1.2;
+  width: 100px;
 `;
 
 const WidgetTitle = styled.h3`
@@ -40,21 +39,20 @@ const HeatmapContainer = styled.div`
   height: auto;
 `;
 
+const ErrorMessage = styled.div`
+  color: #ff6b6b;
+  padding: 20px;
+  text-align: center;
+  background-color: rgba(255, 107, 107, 0.1);
+  border-radius: 8px;
+  margin: 10px 0;
+`;
+
 const BreakdownContainer = styled.div`
   margin-top: 20px;
   padding: 20px;
   background-color: #2a2a2a;
   border-radius: 10px;
-`;
-
-const LocationSection = styled.div`
-  margin-bottom: 20px;
-`;
-
-const LocationTitle = styled.h4`
-  color: #fff;
-  margin-bottom: 10px;
-  font-size: 16px;
 `;
 
 const BreakdownItem = styled.div`
@@ -86,372 +84,255 @@ const PercentageBar = styled.div`
   }
 `;
 
-const ShowAllButton = styled.button`
-  background-color: #0080ff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
-  cursor: pointer;
-  margin-left: 16px;
-  font-size: 14px;
-  
-  &:hover {
-    background-color: #0066cc;
-  }
-`;
+const LocationVsDiscovery = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
+  const [showPercentage, setShowPercentage] = useState(true);
+  const [data, setData] = useState({});
+  const [topLocations, setTopLocations] = useState([]);
+  const [discoveryChannels, setDiscoveryChannels] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-const Modal = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.8);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-`;
+  const getTimeRanges = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let currentStart, currentEnd;
 
-const ModalContent = styled.div`
-  background-color: #1e1e1e;
-  padding: 30px;
-  border-radius: 15px;
-  max-width: 90%;
-  max-height: 90%;
-  overflow-y: auto;
-  position: relative;
-`;
+    switch (timeRange) {
+      case '1day':
+        currentStart = today;
+        currentEnd = now;
+        break;
+      case '1week':
+        currentStart = new Date(today.setDate(today.getDate() - 7));
+        currentEnd = now;
+        break;
+      case '1month':
+        currentStart = new Date(today.setMonth(today.getMonth() - 1));
+        currentEnd = now;
+        break;
+      case '3months':
+        currentStart = new Date(today.setMonth(today.getMonth() - 3));
+        currentEnd = now;
+        break;
+      case 'custom':
+        currentStart = new Date(startDate);
+        currentEnd = new Date(endDate);
+        break;
+      default:
+        currentStart = today;
+        currentEnd = now;
+    }
 
-const CloseButton = styled.button`
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
-  cursor: pointer;
-`;
-
-const ErrorMessage = styled.div`
-  color: #ff6b6b;
-  padding: 20px;
-  text-align: center;
-  background-color: rgba(255, 107, 107, 0.1);
-  border-radius: 8px;
-  margin: 10px 0;
-`;
-
-const CellContainer = styled.div`
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  &:hover .tooltip {
-    visibility: visible;
-    opacity: 1;
-  }
-`;
-
-const Tooltip = styled.div`
-  visibility: hidden;
-  opacity: 0;
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 8px;
-  background-color: rgba(0, 0, 0, 0.9);
-  color: white;
-  border-radius: 4px;
-  font-size: 12px;
-  white-space: nowrap;
-  z-index: 1000;
-  transition: opacity 0.2s;
-  pointer-events: none;
-
-  &::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    margin-left: -5px;
-    border-width: 5px;
-    border-style: solid;
-    border-color: rgba(0, 0, 0, 0.9) transparent transparent transparent;
-  }
-`;
-
-const initialState = {
-  showPercentage: true,
-  heatmapData: [],
-  totalPatients: 0,
-  locations: [],
-  discoveryMethods: [],
-  isLoading: true,
-  error: null,
-  locationBreakdown: {},
-  locationTotals: {},
-  showAllModal: false,
-  allLocationsData: null
-};
-
-const getTimeRangeFilter = (timeRange, startDate) => {
-  const now = new Date();
-  const timeRanges = {
-    '1day': 1,
-    '1week': 7,
-    '1month': 30,
-    '3months': 90,
-    'custom': null
+    return { currentStart, currentEnd };
   };
 
-  if (timeRange === 'custom') {
-    return startDate ? new Date(startDate).toISOString() : null;
-  }
+  const getLocationFromAddress = (address) => {
+    if (!address) return 'Unknown';
+    return address.split(',')[0].trim();
+  };
 
-  const days = timeRanges[timeRange] || 1;
-  return new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
-};
-
-const getFirstWord = (address) => {
-  return (address || "Unknown").split(',')[0].trim();
-};
-
-const LocationVsDiscovery = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
-  const [state, setState] = useState(initialState);
-
-  const fetchData = useCallback(async () => {
-    try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-      let query = supabase
-        .from('appointments')
-        .select(`
-          patients!inner(
-            address,
-            how_did_you_get_to_know_us
-          )
-        `)
-        .eq('hospital_id', hospitalId);
-
-      if (doctorId !== 'all') {
-        query = query.eq('doctor_id', doctorId);
-      }
-
-      if (timeRange === 'custom' && startDate && endDate) {
-        query = query
-          .gte('appointment_time', startDate)
-          .lte('appointment_time', endDate);
-      } else {
-        const timeFilter = getTimeRangeFilter(timeRange, startDate);
-        if (timeFilter) {
-          query = query.gte('appointment_time', timeFilter);
-        }
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw new Error('Failed to fetch appointment data');
-
-      // Process locations and create frequency map
-      const locationFrequency = {};
-      const discoveryMethodsSet = new Set();
-      
-      data.forEach(appointment => {
-        const location = getFirstWord(appointment.patients.address);
-        locationFrequency[location] = (locationFrequency[location] || 0) + 1;
-        discoveryMethodsSet.add(appointment.patients.how_did_you_get_to_know_us || 'Unknown');
-      });
-
-      const discoveryMethods = Array.from(discoveryMethodsSet);
-      
-      // Sort locations by frequency and get top 5
-      const sortedLocations = Object.entries(locationFrequency)
-        .sort(([, a], [, b]) => b - a)
-        .map(([location]) => location);
-
-      const top5Locations = sortedLocations.slice(0, 5);
-
-      const matrix = {};
-      const breakdown = {};
-      const totals = {};
-      let totalCount = 0;
-
-      // Initialize data structures for all locations
-      sortedLocations.forEach(location => {
-        matrix[location] = {};
-        breakdown[location] = {};
-        totals[location] = 0;
-      });
-
-      // Process the data
-      data.forEach(appointment => {
-        const location = getFirstWord(appointment.patients.address);
-        const discoveryMethod = appointment.patients.how_did_you_get_to_know_us || 'Unknown';
-
-        if (!matrix[location][discoveryMethod]) matrix[location][discoveryMethod] = 0;
-        if (!breakdown[location][discoveryMethod]) breakdown[location][discoveryMethod] = 0;
-        
-        matrix[location][discoveryMethod]++;
-        breakdown[location][discoveryMethod]++;
-        totals[location]++;
-        totalCount++;
-      });
-
-      // Create heatmap arrays for top 5 and all locations
-      const top5HeatmapArray = top5Locations.map(location =>
-        discoveryMethods.map(method => matrix[location]?.[method] || 0)
-      );
-
-      setState(prev => ({
-        ...prev,
-        heatmapData: top5HeatmapArray,
-        discoveryMethods,
-        locations: top5Locations,
-        locationBreakdown: breakdown,
-        locationTotals: totals,
-        totalPatients: totalCount,
-        isLoading: false,
-        allLocationsData: {
-          locations: sortedLocations,
-          breakdown,
-          totals
-        }
-      }));
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        error: error.message,
-        isLoading: false
-      }));
-    }
-  }, [hospitalId, doctorId, timeRange, startDate, endDate]);
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+  };
 
   useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const { currentStart, currentEnd } = getTimeRanges();
+        
+        let query = supabase
+          .from('appointments')
+          .select(`
+            patient_id,
+            appointment_time,
+            patients!inner(
+              address,
+              how_did_you_get_to_know_us
+            )
+          `)
+          .eq('hospital_id', hospitalId)
+          .gte('appointment_time', formatDate(currentStart))
+          .lte('appointment_time', formatDate(currentEnd));
+
+        if (doctorId !== 'all') {
+          query = query.eq('doctor_id', doctorId);
+        }
+
+        const { data: appointments, error: queryError } = await query;
+        if (queryError) throw queryError;
+
+        // Get top 5 locations
+        const locationCounts = {};
+        const channelSet = new Set();
+        
+        appointments.forEach(appointment => {
+          const location = getLocationFromAddress(appointment.patients.address);
+          locationCounts[location] = (locationCounts[location] || 0) + 1;
+          
+          const channel = appointment.patients.how_did_you_get_to_know_us;
+          if (channel) channelSet.add(channel);
+        });
+
+        const top5Locations = Object.entries(locationCounts)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([location]) => location);
+
+        const allChannels = Array.from(channelSet).sort();
+
+        setTopLocations(top5Locations);
+        setDiscoveryChannels(allChannels);
+
+        // Process location vs discovery channel data
+        const result = {};
+        appointments.forEach(appointment => {
+          const location = getLocationFromAddress(appointment.patients.address);
+          if (!top5Locations.includes(location)) return;
+          
+          const channel = appointment.patients.how_did_you_get_to_know_us;
+          if (!channel) return;
+
+          if (!result[location]) {
+            result[location] = { total: 0, channels: {} };
+          }
+          result[location].total++;
+          result[location].channels[channel] = (result[location].channels[channel] || 0) + 1;
+        });
+
+        setData(result);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     fetchData();
-  }, [fetchData]);
+  }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
-  const formattedData = useMemo(() => 
-    state.heatmapData?.map((row) =>
-      row.map((value) => (state.showPercentage ? ((value / state.totalPatients) * 100).toFixed(2) : value))
-    ) || [], 
-    [state.heatmapData, state.showPercentage, state.totalPatients]
-  );
-
-  const maxValue = useMemo(() => 
-    Math.max(1, ...(state.heatmapData?.flat() || [1])),
-    [state.heatmapData]
-  );
-
-  const renderBreakdown = useCallback((location, total) => {
-    if (!state.locationBreakdown[location]) return null;
-    
-    return Object.entries(state.locationBreakdown[location])
-      .sort(([, a], [, b]) => b - a)
-      .map(([method, value]) => {
-        const percentage = ((value / total) * 100).toFixed(1);
-        return (
-          <BreakdownItem key={`${location}-${method}`}>
-            {percentage}% of {location} discovered through {method}
-            <PercentageBar percentage={percentage} />
-          </BreakdownItem>
-        );
-      });
-  }, [state.locationBreakdown]);
-
-  if (state.isLoading) {
+  if (isLoading) {
     return (
       <WidgetContainer>
-        <WidgetTitle>Location vs Discovery Method</WidgetTitle>
+        <WidgetTitle>Location vs Discovery Channel Distribution</WidgetTitle>
         <div style={{ textAlign: 'center', padding: '20px' }}>Loading...</div>
       </WidgetContainer>
     );
   }
 
-  if (state.error) {
+  if (error) {
     return (
       <WidgetContainer>
-        <WidgetTitle>Location vs Discovery Method</WidgetTitle>
-        <ErrorMessage>Error: {state.error}</ErrorMessage>
+        <WidgetTitle>Location vs Discovery Channel Distribution</WidgetTitle>
+        <ErrorMessage>Error: {error}</ErrorMessage>
       </WidgetContainer>
     );
   }
 
+  const maxValue = Math.max(
+    ...Object.values(data).flatMap(locationGroup => 
+      Object.values(locationGroup.channels)
+    ),
+    1
+  );
+
+  const formattedData = topLocations.map(location => 
+    discoveryChannels.map(channel => {
+      const count = data[location]?.channels[channel] || 0;
+      const total = data[location]?.total || 1;
+      return showPercentage ? ((count / total) * 100).toFixed(1) : count;
+    })
+  );
+
+  const renderBreakdown = (location) => {
+    const locationData = data[location];
+    if (!locationData || !locationData.total) return null;
+
+    return Object.entries(locationData.channels)
+      .sort(([, a], [, b]) => b - a)
+      .map(([channel, count]) => {
+        const percentage = ((count / locationData.total) * 100).toFixed(1);
+        return (
+          <BreakdownItem key={`${location}-${channel}`}>
+            {percentage}% of patients from {location} discovered through {channel}
+            <PercentageBar percentage={percentage} />
+          </BreakdownItem>
+        );
+      });
+  };
+
   return (
     <WidgetContainer>
       <WidgetTitle>
-        Location vs Discovery Method (Top 5)
-        <div>
-          <Switch
-            onChange={() => setState(prev => ({ ...prev, showPercentage: !prev.showPercentage }))}
-            checked={state.showPercentage}
-            offColor="#888"
-            onColor="#66ff66"
-            uncheckedIcon={false}
-            checkedIcon={false}
-            aria-label="Toggle percentage display"
-          />
-          <ShowAllButton onClick={() => setState(prev => ({ ...prev, showAllModal: true }))}>
-            Show All
-          </ShowAllButton>
-        </div>
+        Location vs Discovery Channel Distribution
+        <Switch
+          onChange={() => setShowPercentage(!showPercentage)}
+          checked={showPercentage}
+          offColor="#888"
+          onColor="#66ff66"
+          uncheckedIcon={false}
+          checkedIcon={false}
+        />
       </WidgetTitle>
-
       <HeatmapContainer>
         <HeatMapGrid
           data={formattedData}
-          xLabels={state.discoveryMethods}
-          yLabels={state.locations}
+          xLabels={discoveryChannels}
+          yLabels={topLocations}
           cellRender={(x, y, value) => (
-            <CellContainer>
-              <div>{value}{state.showPercentage ? '%' : ''}</div>
-              <Tooltip className="tooltip">
-                {state.locations[y]}, Method: {state.discoveryMethods[x]}
-                <br />
-                Value: {value}{state.showPercentage ? '%' : ''}
-              </Tooltip>
-            </CellContainer>
+            <div style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {value}{showPercentage ? '%' : ''}
+            </div>
           )}
           xLabelsStyle={() => ({
             color: '#ffffff',
-            fontSize: '0.8rem',
+            fontSize: '1rem',
           })}
           yLabelsStyle={() => ({
-            fontSize: '0.8rem',
+            fontSize: '1rem',
             color: '#ffffff',
             marginRight: '15px',
           })}
           cellStyle={(x, y) => {
-            const rawValue = state.heatmapData[x]?.[y] || 0;
-            const value = state.showPercentage 
-              ? (rawValue / state.totalPatients) * 100 
-              : rawValue;
-            const maxVal = state.showPercentage 
-              ? (maxValue / state.totalPatients) * 100 
-              : maxValue;
-            const intensity = maxVal > 0 ? value / maxVal : 0;
-            
-            return {
-              background: intensity === 0
-                ? 'rgba(0, 128, 255, 0.1)'
-                : `rgba(0, 128, 255, ${0.2 + (intensity * 0.8)})`,
-              fontSize: '0.9rem',
-              color: intensity > 0.5 ? '#ffffff' : '#ffffff',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              padding: '8px',
-              cursor: 'pointer',
-              transition: 'background-color 0.3s ease',
-              position: 'relative',
-              '&:hover': {
-                opacity: 0.8,
-              }
-            };
+            try {
+              const location = topLocations[x];
+              const channel = discoveryChannels[y];
+              
+              const rawValue = data[location]?.channels[channel] || 0;
+              const alpha = maxValue > 0 ? rawValue / maxValue : 0;
+              
+              return {
+                background: `rgba(0, 128, 255, ${Math.min(Math.max(alpha, 0.1), 1)})`,
+                fontSize: '0.9rem',
+                color: 'white',
+                border: '1px solid #ffffff',
+                transition: 'all 0.3s ease'
+              };
+            } catch (error) {
+              return {
+                background: `rgba(0, 128, 255, 0.1)`,
+                fontSize: '0.9rem',
+                color: 'white',
+                border: '1px solid #ffffff',
+                transition: 'all 0.3s ease'
+              };
+            }
           }}
           cellHeight="5.5rem"
           xLabelsPos="top"
@@ -463,35 +344,15 @@ const LocationVsDiscovery = ({ hospitalId, doctorId, timeRange, startDate, endDa
           )}
           square
         />
+        <div style={{ textAlign: 'center', marginTop: '10px' }}>
+          <span style={{ color: '#a5a5a5' }}>
+            {showPercentage ? 'Showing Percentages' : 'Showing Actual Values'}
+          </span>
+        </div>
       </HeatmapContainer>
-
-      <BreakdownContainer>
-        {state.locations.map(location => (
-          <LocationSection key={location}>
-            <LocationTitle>{location} Discovery Method Distribution</LocationTitle>
-            {renderBreakdown(location, state.locationTotals[location])}
-          </LocationSection>
-        ))}
-      </BreakdownContainer>
-
-      {state.showAllModal && (
-        <Modal>
-          <ModalContent>
-            <CloseButton onClick={() => setState(prev => ({ ...prev, showAllModal: false }))}>
-              ×
-            </CloseButton>
-            <h2 style={{ marginBottom: '20px' }}>All Locations Discovery Method Distribution</h2>
-            <BreakdownContainer>
-              {state.allLocationsData.locations.map(location => (
-                <LocationSection key={location}>
-                  <LocationTitle>{location} Discovery Method Distribution</LocationTitle>
-                  {renderBreakdown(location, state.allLocationsData.totals[location])}
-                </LocationSection>
-              ))}
-            </BreakdownContainer>
-          </ModalContent>
-        </Modal>
-      )}
+      {/* <BreakdownContainer>
+        {topLocations.map(location => renderBreakdown(location))}
+      </BreakdownContainer> */}
     </WidgetContainer>
   );
 };
@@ -499,14 +360,9 @@ const LocationVsDiscovery = ({ hospitalId, doctorId, timeRange, startDate, endDa
 LocationVsDiscovery.propTypes = {
   hospitalId: PropTypes.string.isRequired,
   doctorId: PropTypes.string.isRequired,
-  timeRange: PropTypes.oneOf(['1day', '1week', '1month', '3months', 'custom']).isRequired,
+  timeRange: PropTypes.string.isRequired,
   startDate: PropTypes.string,
   endDate: PropTypes.string
-};
-
-LocationVsDiscovery.defaultProps = {
-  startDate: null,
-  endDate: null
 };
 
 export default LocationVsDiscovery;

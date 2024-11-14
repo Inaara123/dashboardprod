@@ -68,6 +68,17 @@ const DiscoveryWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }
     
     return { currentStart, currentEnd };
   };
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+};
 
   const fetchDiscoveries = async () => {
     try {
@@ -81,8 +92,8 @@ const DiscoveryWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }
           patients!inner(how_did_you_get_to_know_us)
         `)
         .eq('hospital_id', hospitalId)
-        .gte('appointment_time', currentStart.toISOString())
-        .lte('appointment_time', currentEnd.toISOString());
+        .gte('appointment_time', formatDate(currentStart))
+        .lte('appointment_time', formatDate(currentEnd));
 
       if (doctorId !== 'all') {
         query = query.eq('doctor_id', doctorId);
@@ -140,11 +151,10 @@ const DiscoveryWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }
 
   return (
     <div style={{
-      backgroundColor: 'white',
+      backgroundColor: '#1E2023',
       borderRadius: '10px',
       padding: '20px',
       boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      border: '1px solid #e0e0e0',
       display: 'inline-block',
       minWidth: '300px',
       maxWidth: '400px',
@@ -158,7 +168,7 @@ const DiscoveryWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }
       }}>
         <h3 style={{ 
           margin: 0,
-          color: '#666',
+          color: '#F0F2F5',
           fontSize: '16px',
           fontWeight: '600'
         }}>

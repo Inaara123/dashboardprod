@@ -9,7 +9,9 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
   const [loading, setLoading] = useState(true);
 
   const getTimeRanges = () => {
-    const now = new Date();
+    const now = new Date()
+    console.log("the local time is : ",now)
+    console.log("the now time is : ", new Date())
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     let currentStart, currentEnd, previousStart, previousEnd;
@@ -63,18 +65,33 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
     
     return { currentStart, currentEnd, previousStart, previousEnd };
   };
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+};
 
   const fetchVisits = async () => {
     try {
       setLoading(true);
       const { currentStart, currentEnd, previousStart, previousEnd } = getTimeRanges();
+      console.log("the previous start is : ",previousStart.toISOString())
+      console.log("the previous end is : ",previousEnd.toISOString())
+      console.log("the previous start is :",previousStart)
+      console.log("the previous end is : ",previousEnd  )
 
       let query = supabase
         .from('appointments')
         .select('appointment_id', { count: 'exact' })
         .eq('hospital_id', hospitalId)
-        .gte('appointment_time', currentStart.toISOString())
-        .lte('appointment_time', currentEnd.toISOString());
+        .gte('appointment_time', formatDate(currentStart))
+        .lte('appointment_time', formatDate(currentEnd));
 
       if (doctorId !== 'all') {
         query = query.eq('doctor_id', doctorId);
@@ -88,8 +105,8 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
         .from('appointments')
         .select('appointment_id', { count: 'exact' })
         .eq('hospital_id', hospitalId)
-        .gte('appointment_time', previousStart.toISOString())
-        .lte('appointment_time', previousEnd.toISOString());
+        .gte('appointment_time', formatDate(previousStart))
+        .lte('appointment_time', formatDate(previousEnd));
 
       if (doctorId !== 'all') {
         previousQuery = previousQuery.eq('doctor_id', doctorId);
@@ -100,6 +117,8 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
       if (previousError) throw previousError;
 
       setVisitsCount(currentCount || 0);
+      console.log("the previous count is : ",previousCount)
+      console.log("the current count is : ",currentCount)
 
       if (previousCount > 0) {
         const percentageChange = ((currentCount - previousCount) / previousCount) * 100;
@@ -138,33 +157,35 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
 
   return (
     <div style={{
-      backgroundColor: 'white',
-      borderRadius: '10px',
-      padding: '20px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      border: '1px solid #e0e0e0',  // Added defined border
-      display: 'inline-block',      // Makes the width fit the content
-      minWidth: '200px',           // Minimum width to maintain aesthetics
-      maxWidth: '300px',           // Maximum width to keep it compact
-      height: 'fit-content'        // Height adjusts to content
+      backgroundColor: '#1E2023', // Match parent background
+      width: '100%', // Take full width of parent
+      height: '100%', // Take full height of parent
+      padding: '0', // Remove padding since parent already has it
+      margin: '0', // Remove any margin
+      border: 'none', // Remove border
+      borderRadius: '0', // Remove border radius
+      boxShadow: 'none', // Remove shadow
+      display: 'flex',
+      flexDirection: 'column',
+      color: '#e0e0e0'
     }}>
       <h3 style={{ 
         margin: '0 0 15px 0', 
-        color: '#666',
-        fontSize: '16px',
+        color: '#F0F2F5',
+        fontSize: '20px',
         fontWeight: '600'
       }}>
         Number of Patients
       </h3>
       {loading ? (
-        <div>Loading...</div>
+        <div style={{ color: '#bdbdbd' }}>Loading...</div>
       ) : (
         <>
           <div style={{ 
             fontSize: '32px', 
             fontWeight: 'bold', 
             marginBottom: '10px',
-            color: '#2c3e50'  // Darker color for better contrast
+            color: '#ffffff'
           }}>
             {visitsCount}
           </div>
@@ -172,7 +193,7 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              color: comparison.increased ? '#28a745' : '#dc3545',
+              color: comparison.increased ? '#4caf50' : '#f44336',
               fontSize: '14px',
               padding: '5px 0'
             }}>

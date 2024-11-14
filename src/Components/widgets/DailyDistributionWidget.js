@@ -26,6 +26,18 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
     'Friday': '#009688',
     'Saturday': '#795548'
   };
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+};
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,12 +71,13 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
             startDateTime.setDate(startDateTime.getDate() - 1);
         }
 
+
         let query = supabase
           .from('appointments')
           .select('appointment_time')
           .eq('hospital_id', hospitalId)
-          .gte('appointment_time', startDateTime.toISOString())
-          .lte('appointment_time', endDateTime.toISOString());
+          .gte('appointment_time', formatDate(startDateTime))
+          .lte('appointment_time', formatDate(endDateTime));
 
         if (doctorId !== 'all') {
           query = query.eq('doctor_id', doctorId);
@@ -75,7 +88,6 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
 
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         
-        // Initialize counts and day occurrence tracking
         const dayCounts = {};
         const dayOccurrences = {};
         dayNames.forEach(day => {
@@ -83,7 +95,6 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
           dayOccurrences[day] = 0;
         });
 
-        // Count occurrences of each day in the date range
         let currentDate = new Date(startDateTime);
         while (currentDate <= endDateTime) {
           const dayName = dayNames[currentDate.getDay()];
@@ -91,7 +102,6 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
           currentDate.setDate(currentDate.getDate() + 1);
         }
 
-        // Count appointments per day
         appointments.forEach(appointment => {
           const date = new Date(appointment.appointment_time);
           const dayName = dayNames[date.getDay()];
@@ -122,49 +132,124 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
   }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
   if (isLoading) return (
-    <div style={styles.fullWidthWidget}>
-      <div style={styles.header}>
-        <h3 style={styles.title}>Daily Patient Distribution</h3>
+    <div style={{
+      ...styles.fullWidthWidget,
+      backgroundColor: '#1E2023',
+      border: '1px solid rgba(255, 255, 255, 0.1)'
+    }}>
+      <div style={{
+        ...styles.header,
+        borderBottom: '2px solid rgba(255, 255, 255, 0.1)'
+      }}>
+        <h3 style={{
+          ...styles.title,
+          color: '#ffffff'
+        }}>Daily Patient Distribution</h3>
       </div>
-      <div style={styles.loading}>Loading...</div>
+      <div style={{
+        ...styles.loading,
+        color: 'rgba(255, 255, 255, 0.7)'
+      }}>Loading...</div>
     </div>
   );
 
   if (error) return (
-    <div style={styles.fullWidthWidget}>
-      <div style={styles.header}>
-        <h3 style={styles.title}>Daily Patient Distribution</h3>
+    <div style={{
+      ...styles.fullWidthWidget,
+      backgroundColor: '#1E2023',
+      border: '1px solid rgba(255, 255, 255, 0.1)'
+    }}>
+      <div style={{
+        ...styles.header,
+        borderBottom: '2px solid rgba(255, 255, 255, 0.1)'
+      }}>
+        <h3 style={{
+          ...styles.title,
+          color: '#ffffff'
+        }}>Daily Patient Distribution</h3>
       </div>
       <div style={styles.error}>{error}</div>
     </div>
   );
 
   const total = data.reduce((sum, item) => sum + item.value, 0);
+  const getGradientColor = (day) => {
+    const gradients = {
+      'Sunday': { start: '#FF6B6B', end: '#FF8E8E' },
+      'Monday': { start: '#4ED6B3', end: '#7EECD1' },
+      'Tuesday': { start: '#7795F8', end: '#7795F8' },
+      'Wednesday': { start: '#9B6FFF', end: '#B794F4' },
+      'Thursday': { start: '#FF9F43', end: '#FFB976' },
+      'Friday': { start: '#56CCF2', end: '#2F80ED' },
+      'Saturday': { start: '#FF7EB3', end: '#FF99C3' }
+    };
+    return gradients[day];
+  };
 
   return (
-    <div style={styles.fullWidthWidget}>
-      <div style={styles.header}>
-        <h3 style={styles.title}>Daily Patient Distribution</h3>
-        <div style={styles.totalAppointments}>
+    <div style={{
+      ...styles.fullWidthWidget,
+      backgroundColor: '#1E2023',
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+    }}>
+      <div style={{
+        ...styles.header,
+        borderBottom: '2px solid rgba(255, 255, 255, 0.1)'
+      }}>
+        <h3 style={{
+          ...styles.title,
+          background: 'linear-gradient(45deg, #E0E0E0, #FFFFFF)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>Daily Patient Distribution</h3>
+        <div style={{
+          ...styles.totalAppointments,
+          background: 'linear-gradient(45deg, #E0E0E0, #FFFFFF)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}>
           Total Appointments: {total}
         </div>
       </div>
       
-      <div style={styles.summary}>
-        {data.map(item => (
-          <div key={item.name} style={{
-            ...styles.summaryItem,
-            borderLeft: `4px solid ${dayColors[item.name]}`
-          }}>
-            <span style={styles.summaryLabel}>{item.name}</span>
-            <span style={styles.summaryValue}>
-              {item.value} ({item.percentage}%)
-            </span>
-            <span style={styles.summaryAverage}>
-              Average number of Patients : {item.average}
-            </span>
-          </div>
-        ))}
+      <div style={{
+        ...styles.summary,
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255, 255, 255, 0.05)'
+      }}>
+        {data.map(item => {
+          const gradientColor = getGradientColor(item.name);
+          return (
+            <div key={item.name} style={{
+              ...styles.summaryItem,
+              backgroundColor: 'rgba(255, 255, 255, 0.03)',
+              borderLeft: `4px solid ${gradientColor.start}`,
+              background: `linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02))`,
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+            }}>
+              <span style={{
+                ...styles.summaryLabel,
+                color: 'rgba(255, 255, 255, 0.9)'
+              }}>{item.name}</span>
+              <span style={{
+                ...styles.summaryValue,
+                background: 'linear-gradient(45deg, #E0E0E0, #FFFFFF)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                {item.value} ({item.percentage}%)
+              </span>
+              <span style={{
+                ...styles.summaryAverage,
+                color: 'rgba(255, 255, 255, 0.6)'
+              }}>
+                Average: {item.average}/day
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <div style={styles.chartContainer}>
@@ -173,89 +258,124 @@ const DailyDistributionWidget = ({ hospitalId, doctorId, timeRange, startDate, e
             data={data}
             margin={{ top: 40, right: 30, left: 40, bottom: 20 }}
           >
-            <CartesianGrid strokeDasharray="3 3" />
+            <CartesianGrid 
+              strokeDasharray="3 3" 
+              stroke="rgba(255, 255, 255, 0.05)"
+            />
             <XAxis 
               type="category" 
               dataKey="name"
-              tick={{ fontSize: 14, fill: '#666' }}
-              tickLine={{ stroke: '#666' }}
-              axisLine={{ stroke: '#666' }}
+              tick={{ fontSize: 12, fill: 'rgba(255, 255, 255, 0.7)' }}
+              tickLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
+              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
               height={60}
               interval={0}
             />
             <YAxis 
               type="number" 
               domain={[0, 'auto']}
-              tick={{ fontSize: 14, fill: '#666' }}
-              tickLine={{ stroke: '#666' }}
-              axisLine={{ stroke: '#666' }}
-              label={{ value: 'Number of Appointments', angle: -90, position: 'insideLeft', offset: -20 }}
+              tick={{ fontSize: 12, fill: 'rgba(255, 255, 255, 0.7)' }}
+              tickLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
+              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
+              label={{ 
+                value: 'Number of Appointments', 
+                angle: -90, 
+                position: 'insideLeft', 
+                offset: -20,
+                style: { fill: 'rgba(255, 255, 255, 0.7)' }
+              }}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                padding: '10px'
+                backgroundColor: 'rgba(30, 32, 35, 0.95)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                padding: '12px',
+                color: '#ffffff',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                backdropFilter: 'blur(10px)',
               }}
               formatter={(value, name, props) => [
                 `${value} appointments (${props.payload.percentage}%)
 Daily Average: ${props.payload.average}`,
                 props.payload.name
               ]}
+              cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
             />
-// ... (previous code remains the same until the Bar component)
-
-<Bar 
-  dataKey="value"
-  radius={[4, 4, 0, 0]}
->
-  {data.map((entry, index) => (
-    <Cell key={`cell-${index}`} fill={dayColors[entry.name]} />
-  ))}
-  <LabelList
-    dataKey="value"
-    position="top"
-    content={(props) => {
-      if (!props || !props.payload) return null;
-      
-      const { x, y, width, payload } = props;
-      const text = `${payload.value} (${payload.percentage}%)
-Avg: ${payload.average}`;
-      const textWidth = Math.max(...text.split('\n').map(t => t.length)) * 7;
-      const rectWidth = textWidth + 20;
-      const lines = text.split('\n');
-      
-      return (
-        <g>
-          <rect
-            x={x + width/2 - rectWidth/2}
-            y={y - 35}
-            width={rectWidth}
-            height="30"
-            fill="white"
-            stroke="#ccc"
-            rx="3"
-            ry="3"
-          />
-          {lines.map((line, i) => (
-            <text
-              key={i}
-              x={x + width/2}
-              y={y - 20 + (i * 12)}
-              textAnchor="middle"
-              fill="#666"
-              fontSize="12"
+            <Bar 
+              dataKey="value"
+              radius={[8, 8, 0, 0]}
             >
-              {line}
-            </text>
-          ))}
-        </g>
-      );
-    }}
-  />
-</Bar>
-
+              {data.map((entry, index) => {
+                const gradientColor = getGradientColor(entry.name);
+                return (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={`url(#gradient-${entry.name})`}
+                  />
+                );
+              })}
+              <LabelList
+                dataKey="value"
+                position="top"
+                content={(props) => {
+                  if (!props || !props.payload) return null;
+                  
+                  const { x, y, width, payload } = props;
+                  const text = `${payload.value} (${payload.percentage}%)
+Avg: ${payload.average}`;
+                  const textWidth = Math.max(...text.split('\n').map(t => t.length)) * 7;
+                  const rectWidth = textWidth + 20;
+                  const lines = text.split('\n');
+                  
+                  return (
+                    <g>
+                      <rect
+                        x={x + width/2 - rectWidth/2}
+                        y={y - 35}
+                        width={rectWidth}
+                        height="30"
+                        fill="rgba(30, 32, 35, 0.95)"
+                        stroke="rgba(255, 255, 255, 0.1)"
+                        rx="6"
+                        ry="6"
+                      />
+                      {lines.map((line, i) => (
+                        <text
+                          key={i}
+                          x={x + width/2}
+                          y={y - 20 + (i * 12)}
+                          textAnchor="middle"
+                          fill="rgba(255, 255, 255, 0.9)"
+                          fontSize="12"
+                        >
+                          {line}
+                        </text>
+                      ))}
+                    </g>
+                  );
+                }}
+              />
+            </Bar>
+            {/* Define gradients for each day */}
+            <defs>
+              {data.map((entry) => {
+                const gradientColor = getGradientColor(entry.name);
+                return (
+                  <linearGradient
+                    key={`gradient-${entry.name}`}
+                    id={`gradient-${entry.name}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor={gradientColor.start} stopOpacity={1} />
+                    <stop offset="100%" stopColor={gradientColor.end} stopOpacity={1} />
+                  </linearGradient>
+                );
+              })}
+            </defs>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -267,10 +387,7 @@ const styles = {
   fullWidthWidget: {
     width: '100%',
     padding: '24px',
-    backgroundColor: '#ffffff',
     borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    border: '1px solid #e0e0e0',
     position: 'relative',
     marginBottom: '24px',
   },
@@ -279,18 +396,15 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '24px',
-    borderBottom: '2px solid #f0f0f0',
     paddingBottom: '16px',
   },
   title: {
     margin: 0,
     fontSize: '1.5rem',
-    color: '#333',
     fontWeight: '600',
   },
   totalAppointments: {
     fontSize: '1.1rem',
-    color: '#666',
     fontWeight: '500',
   },
   chartContainer: {
@@ -305,16 +419,12 @@ const styles = {
     gap: '16px',
     marginBottom: '24px',
     padding: '16px',
-    backgroundColor: '#f8f9fa',
     borderRadius: '8px',
   },
   summaryItem: {
     padding: '12px',
     textAlign: 'center',
-    backgroundColor: 'white',
     borderRadius: '6px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    transition: 'transform 0.2s',
     display: 'flex',
     flexDirection: 'column',
     gap: '4px',
@@ -322,24 +432,20 @@ const styles = {
   summaryLabel: {
     display: 'block',
     fontSize: '1rem',
-    color: '#666',
     marginBottom: '4px',
     fontWeight: '500',
   },
   summaryValue: {
     fontSize: '1.2rem',
     fontWeight: 'bold',
-    color: '#333',
   },
   summaryAverage: {
     fontSize: '0.9rem',
-    color: '#666',
     fontStyle: 'italic',
   },
   loading: {
     textAlign: 'center',
     padding: '40px',
-    color: '#666',
     fontSize: '1.1rem',
   },
   error: {

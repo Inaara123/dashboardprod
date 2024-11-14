@@ -6,12 +6,12 @@ import PropTypes from 'prop-types';
 import { supabase } from '../../supabaseClient';
 
 const WidgetContainer = styled.div`
-  background-color: #1e1e1e;
-  padding: 20px;
+
   border-radius: 15px;
   color: #fff;
   width: 80%;
-  margin-left: 75px;
+  margin-left: -50px;
+  padding : 10px;
   height: auto;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
@@ -37,6 +37,15 @@ const WidgetTitle = styled.h3`
 const HeatmapContainer = styled.div`
   width: 100%;
   height: auto;
+`;
+
+const ErrorMessage = styled.div`
+  color: #ff6b6b;
+  padding: 20px;
+  text-align: center;
+  background-color: rgba(255, 107, 107, 0.1);
+  border-radius: 8px;
+  margin: 10px 0;
 `;
 
 const BreakdownContainer = styled.div`
@@ -66,7 +75,7 @@ const BreakdownItem = styled.div`
 
 const PercentageBar = styled.div`
   height: 8px;
-  background-color: rgba(128, 0, 128, 0.3);
+  background-color: rgba(0, 128, 255, 0.3);
   border-radius: 4px;
   margin-left: 10px;
   flex: 1;
@@ -79,7 +88,7 @@ const PercentageBar = styled.div`
     top: 0;
     height: 100%;
     width: ${props => props.percentage}%;
-    background-color: purple;
+    background-color: #0080ff;
     border-radius: 4px;
     transition: width 0.3s ease;
   }
@@ -87,120 +96,114 @@ const PercentageBar = styled.div`
 
 const GenderVsDay = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
   const [showPercentage, setShowPercentage] = useState(true);
-  const [heatmapData, setHeatmapData] = useState([]);
-  const [totalPatients, setTotalPatients] = useState(0);
-  const [genders] = useState(['Male', 'Female']);
-  const [daysOfWeek] = useState(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
+  const [data, setData] = useState({
+    male: { total: 0, days: {} },
+    female: { total: 0, days: {} }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [genderBreakdown, setGenderBreakdown] = useState({ male: {}, female: {} });
-  const [genderTotals, setGenderTotals] = useState({ male: 0, female: 0 });
 
-  const getTimeRangeFilter = () => {
+  const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const getTimeRanges = () => {
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let currentStart, currentEnd;
+
     switch (timeRange) {
       case '1day':
-        return new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        currentStart = today;
+        currentEnd = now;
+        break;
       case '1week':
-        return new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+        currentStart = new Date(today.setDate(today.getDate() - 7));
+        currentEnd = now;
+        break;
       case '1month':
-        return new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+        currentStart = new Date(today.setMonth(today.getMonth() - 1));
+        currentEnd = now;
+        break;
       case '3months':
-        return new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
+        currentStart = new Date(today.setMonth(today.getMonth() - 3));
+        currentEnd = now;
+        break;
       case 'custom':
-        return startDate ? new Date(startDate).toISOString() : null;
+        currentStart = new Date(startDate);
+        currentEnd = new Date(endDate);
+        break;
       default:
-        return new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        currentStart = today;
+        currentEnd = now;
     }
+
+    return { currentStart, currentEnd };
   };
 
-  const fetchCorrelationData = async () => {
-    try {
-      setError(null);
+  const formatDate = (date) => {
+    return date.toISOString().slice(0, 23).replace('T', ' ');
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
       setIsLoading(true);
+      setError(null);
+
+      const { currentStart, currentEnd } = getTimeRanges();
       let query = supabase
         .from('appointments')
         .select(`
           appointment_time,
-          patients!inner(
-            gender
-          )
+          patients!inner(gender)
         `)
-        .eq('hospital_id', hospitalId);
+        .eq('hospital_id', hospitalId)
+        .gte('appointment_time', formatDate(currentStart))
+        .lte('appointment_time', formatDate(currentEnd));
 
       if (doctorId !== 'all') {
         query = query.eq('doctor_id', doctorId);
       }
 
-      if (timeRange === 'custom' && startDate && endDate) {
-        query = query
-          .gte('appointment_time', startDate)
-          .lte('appointment_time', endDate);
-      } else {
-        const timeFilter = getTimeRangeFilter();
-        if (timeFilter) {
-          query = query.gte('appointment_time', timeFilter);
-        }
+      const { data: appointments, error: queryError } = await query;
+      
+      if (queryError) {
+        setError(queryError.message);
+        setIsLoading(false);
+        return;
       }
 
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      const matrix = {
-        male: daysOfWeek.reduce((acc, day) => ({ ...acc, [day]: 0 }), {}),
-        female: daysOfWeek.reduce((acc, day) => ({ ...acc, [day]: 0 }), {})
+      const result = {
+        male: { total: 0, days: {} },
+        female: { total: 0, days: {} }
       };
 
-      const breakdown = {
-        male: { ...matrix.male },
-        female: { ...matrix.female }
-      };
-
-      const totals = { male: 0, female: 0 };
-      let totalCount = 0;
-
-      data.forEach(appointment => {
-        if (!appointment.patients || !appointment.patients.gender) return;
-
-        const gender = appointment.patients.gender.toLowerCase();
-        const date = new Date(appointment.appointment_time);
-        const dayOfWeek = daysOfWeek[date.getDay()];
-
-        if (gender !== 'male' && gender !== 'female') return;
-
-        matrix[gender][dayOfWeek]++;
-        breakdown[gender][dayOfWeek]++;
-        totals[gender]++;
-        totalCount++;
+      // Initialize all days to 0
+      weekdays.forEach(day => {
+        result.male.days[day] = 0;
+        result.female.days[day] = 0;
       });
 
-      setGenderBreakdown(breakdown);
-      setGenderTotals(totals);
+      appointments.forEach(appointment => {
+        const appointmentDate = new Date(appointment.appointment_time);
+        const dayOfWeek = weekdays[appointmentDate.getDay()];
+        const gender = appointment.patients.gender.toLowerCase();
 
-      const heatmapArray = ['Male', 'Female'].map(gender =>
-        daysOfWeek.map(day => matrix[gender.toLowerCase()][day] || 0)
-      );
+        if (gender in result) {
+          result[gender].total++;
+          result[gender].days[dayOfWeek]++;
+        }
+      });
 
-      setHeatmapData(heatmapArray);
-      setTotalPatients(totalCount);
-
-    } catch (error) {
-      setError(error.message);
-      console.error('Error fetching correlation data:', error);
-    } finally {
+      setData(result);
       setIsLoading(false);
-    }
-  };
+    };
 
-  useEffect(() => {
-    fetchCorrelationData();
+    fetchData();
   }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
   if (isLoading) {
     return (
       <WidgetContainer>
-        <WidgetTitle>Gender vs Day of Week</WidgetTitle>
+        <WidgetTitle>Weekday Distribution</WidgetTitle>
         <div style={{ textAlign: 'center', padding: '20px' }}>Loading...</div>
       </WidgetContainer>
     );
@@ -209,40 +212,37 @@ const GenderVsDay = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =>
   if (error) {
     return (
       <WidgetContainer>
-        <WidgetTitle>Gender vs Day of Week</WidgetTitle>
-        <div style={{ color: 'red', textAlign: 'center', padding: '20px' }}>
-          Error: {error}
-        </div>
+        <WidgetTitle>Weekday Distribution</WidgetTitle>
+        <ErrorMessage>Error: {error}</ErrorMessage>
       </WidgetContainer>
     );
   }
 
-  const formattedData = heatmapData.map((row, genderIndex) =>
-    row.map((value) => {
-      if (showPercentage) {
-        const gender = genders[genderIndex].toLowerCase();
-        const genderTotal = genderTotals[gender] || 0;
-        return genderTotal > 0 ? ((value / genderTotal) * 100).toFixed(2) : '0.00';
-      }
-      return value;
+  const maxValue = Math.max(
+    ...Object.values(data.male.days),
+    ...Object.values(data.female.days),
+    1
+  );
+
+  const formattedData = ['male', 'female'].map(gender =>
+    weekdays.map(day => {
+      const count = data[gender].days[day] || 0;
+      const total = data[gender].total || 1;
+      return showPercentage ? ((count / total) * 100).toFixed(1) : count;
     })
   );
 
-  const maxValue = showPercentage 
-    ? Math.max(...formattedData.flat().map(v => parseFloat(v)))
-    : Math.max(...heatmapData.flat());
+  const renderBreakdown = (gender) => {
+    const genderData = data[gender.toLowerCase()];
+    if (!genderData || !genderData.total) return null;
 
-  const renderBreakdown = (gender, total) => {
-    const genderLower = gender.toLowerCase();
-    if (!genderBreakdown[genderLower]) return null;
-
-    return Object.entries(genderBreakdown[genderLower])
+    return Object.entries(genderData.days)
       .sort(([, a], [, b]) => b - a)
-      .map(([day, value]) => {
-        const percentage = ((value / total) * 100).toFixed(1);
+      .map(([day, count]) => {
+        const percentage = ((count / genderData.total) * 100).toFixed(1);
         return (
           <BreakdownItem key={`${gender}-${day}`}>
-            {percentage}% of {gender}s visit on {day}
+            {percentage}% of {gender}s visited on {day}
             <PercentageBar percentage={percentage} />
           </BreakdownItem>
         );
@@ -252,7 +252,7 @@ const GenderVsDay = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =>
   return (
     <WidgetContainer>
       <WidgetTitle>
-        Gender vs Day of Week
+        Weekday Distribution
         <Switch
           onChange={() => setShowPercentage(!showPercentage)}
           checked={showPercentage}
@@ -265,58 +265,68 @@ const GenderVsDay = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =>
       <HeatmapContainer>
         <HeatMapGrid
           data={formattedData}
-          xLabels={daysOfWeek}
-          yLabels={genders}
-          cellRender={(x, y, value) => {
-            const rawValue = heatmapData[y]?.[x] || 0;
-            return (
-              <div style={{ fontSize: '12px', color: 'white' }}>
-                {showPercentage ? `${value}%` : value}
-                <br />
-                ({rawValue})
-              </div>
-            );
-          }}
-          cellStyle={(_x, _y, value) => {
-            const normalizedValue = (parseFloat(value) / maxValue) || 0;
-            const intensity = Math.pow(normalizedValue, 0.5);
+          xLabels={weekdays}
+          yLabels={['Male', 'Female']}
+          cellRender={(x, y, value) => (
+            <div style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {value}{showPercentage ? '%' : ''}
+            </div>
+          )}
+          xLabelsStyle={() => ({
+            color: '#ffffff',
+            fontSize: '1rem',
+          })}
+          yLabelsStyle={() => ({
+            fontSize: '1rem',
+            color: '#ffffff',
+            marginRight: '15px',
+          })}
+          cellStyle={(x, y, value) => {
+            const gender = ['male', 'female'][x];
+            const currentDay = weekdays[y];
+            const rawValue = data[gender]?.days[currentDay] || 0;
+            const alpha = maxValue > 0 ? rawValue / maxValue : 0;
             
-            const red = Math.round(128 + (intensity * 127));
-            const green = Math.round(0 + (1 - intensity) * 50);
-            const blue = Math.round(128 + (intensity * 127));
-            const alpha = 0.2 + (intensity * 0.8);
-
             return {
-              background: `rgba(${red}, ${green}, ${blue}, ${alpha})`,
-              fontSize: '15px',
-              color: intensity > 0.7 ? '#ffffff' : '#ffffff',
-              border: '1px solid #2a2a2a',
+              background: `rgba(0, 128, 255, ${Math.min(Math.max(alpha, 0.1), 1)})`,
+              fontSize: '0.9rem',
+              color: 'white',
+              border: '1px solid #ffffff',
               transition: 'all 0.3s ease'
             };
           }}
-          cellHeight="30px"
-          xLabelsStyle={() => ({
-            color: 'white',
-            fontSize: '14px',
-            padding: '2px',
-          })}
-          yLabelsStyle={() => ({
-            color: 'white',
-            fontSize: '14px',
-            padding: '2px',
-          })}
+          cellHeight="5.5rem"
+          xLabelsPos="top"
+          yLabelsPos="left"
+          yLabelsRender={(label) => (
+            <YLabelContainer>
+              {label}
+            </YLabelContainer>
+          )}
+          square
         />
+        <div style={{ textAlign: 'center', marginTop: '10px' }}>
+          <span style={{ color: '#a5a5a5' }}>
+            {showPercentage ? 'Showing Percentages' : 'Showing Actual Values'}
+          </span>
+        </div>
       </HeatmapContainer>
-      <BreakdownContainer>
+      {/* <BreakdownContainer>
         <GenderSection>
-          <GenderTitle>Male</GenderTitle>
-          {renderBreakdown('Male', genderTotals.male)}
+          <GenderTitle>Male Distribution</GenderTitle>
+          {renderBreakdown('male')}
         </GenderSection>
         <GenderSection>
-          <GenderTitle>Female</GenderTitle>
-          {renderBreakdown('Female', genderTotals.female)}
+          <GenderTitle>Female Distribution</GenderTitle>
+          {renderBreakdown('female')}
         </GenderSection>
-      </BreakdownContainer>
+      </BreakdownContainer> */}
     </WidgetContainer>
   );
 };

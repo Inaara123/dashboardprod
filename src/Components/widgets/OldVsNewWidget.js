@@ -37,12 +37,23 @@ const OldVsNewWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate })
           default:
             startDateTime.setDate(startDateTime.getDate() - 1);
         }
+        const formatDate = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          const seconds = String(date.getSeconds()).padStart(2, '0');
+          const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+          
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+      };
 
         let previousQuery = supabase
           .from('appointments')
           .select('patient_id')
           .eq('hospital_id', hospitalId)
-          .lt('appointment_time', startDateTime.toISOString());
+          .lt('appointment_time', formatDate(startDateTime));
 
         if (doctorId !== 'all') {
           previousQuery = previousQuery.eq('doctor_id', doctorId);
@@ -57,8 +68,8 @@ const OldVsNewWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate })
           .from('appointments')
           .select('patient_id, appointment_time, is_follow_up')
           .eq('hospital_id', hospitalId)
-          .gte('appointment_time', startDateTime.toISOString())
-          .lte('appointment_time', endDateTime.toISOString())
+          .gte('appointment_time', formatDate(startDateTime))
+          .lte('appointment_time', formatDate(endDateTime))
           .order('appointment_time', { ascending: true });
 
         if (doctorId !== 'all') {
@@ -129,15 +140,14 @@ const OldVsNewWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate })
 const styles = {
   container: {
     padding: '15px',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#1E2023',
     borderRadius: '8px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    border: '1px solid #e0e0e0',
   },
   line: {
     padding: '8px 0',
     fontSize: '14px',
-    color: '#333',
+    color: '#F0F2F5',
   },
   loading: {
     padding: '15px',

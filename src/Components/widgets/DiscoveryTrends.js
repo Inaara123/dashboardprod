@@ -1,4 +1,3 @@
-// src/components/widgets/DiscoveryTrends.js
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { Line } from 'react-chartjs-2';
@@ -29,18 +28,18 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
   const [selectedChannel, setSelectedChannel] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Predefined colors for better visibility
+  // Updated color palette for better visibility on dark background
   const colorPalette = [
-    'rgb(255, 99, 132)',   // Red
-    'rgb(54, 162, 235)',   // Blue
-    'rgb(75, 192, 192)',   // Teal
-    'rgb(255, 206, 86)',   // Yellow
-    'rgb(153, 102, 255)',  // Purple
-    'rgb(255, 159, 64)',   // Orange
-    'rgb(46, 204, 113)',   // Green
-    'rgb(142, 68, 173)',   // Dark Purple
-    'rgb(52, 152, 219)',   // Light Blue
-    'rgb(231, 76, 60)',    // Dark Red
+    'rgb(255, 99, 132)',    // Bright Pink
+    'rgb(46, 197, 255)',    // Bright Blue
+    'rgb(0, 255, 197)',     // Bright Teal
+    'rgb(255, 195, 0)',     // Bright Yellow
+    'rgb(199, 125, 255)',   // Bright Purple
+    'rgb(255, 159, 64)',    // Bright Orange
+    'rgb(50, 255, 126)',    // Bright Green
+    'rgb(187, 134, 252)',   // Light Purple
+    'rgb(52, 211, 255)',    // Light Blue
+    'rgb(255, 87, 87)',     // Light Red
   ];
 
   const getTimeRange = () => {
@@ -68,13 +67,25 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
         startDateTime.setMonth(now.getMonth() - 3);
         break;
       default:
-        startDateTime.setDate(now.getDate() - 7); // Default to 1 week
+        startDateTime.setDate(now.getDate() - 7);
     }
 
     return {
       start: startDateTime,
       end: now
     };
+  };
+
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
   };
 
   useEffect(() => {
@@ -86,12 +97,11 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
       setIsLoading(true);
       const timeConstraint = getTimeRange();
 
-      // Fetch unique channels first
       const { data: channelsData, error: channelsError } = await supabase
         .from('patients')
         .select('how_did_you_get_to_know_us')
         .neq('how_did_you_get_to_know_us', null)
-        .limit(1000);  // Adjust limit as needed
+        .limit(1000);
 
       if (channelsError) throw channelsError;
 
@@ -102,7 +112,6 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
       )];
       setDiscoveryChannels(uniqueChannels);
 
-      // Fetch appointments with patient data
       let query = supabase
         .from('appointments')
         .select(`
@@ -114,8 +123,8 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
           )
         `)
         .eq('hospital_id', hospitalId)
-        .gte('appointment_time', timeConstraint.start.toISOString())
-        .lte('appointment_time', timeConstraint.end.toISOString())
+        .gte('appointment_time', formatDate(timeConstraint.start))
+        .lte('appointment_time', formatDate(timeConstraint.end))
         .order('appointment_time', { ascending: true });
 
       if (doctorId !== 'all') {
@@ -125,7 +134,6 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
       const { data: appointmentsData, error: appointmentsError } = await query;
       if (appointmentsError) throw appointmentsError;
 
-      // Process data for visualization
       const dailyData = new Map();
       
       appointmentsData.forEach(appointment => {
@@ -142,7 +150,6 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
         dailyData.get(date)[channel]++;
       });
 
-      // Convert data for chart
       const dates = Array.from(dailyData.keys()).sort((a, b) => 
         new Date(a) - new Date(b)
       );
@@ -183,22 +190,47 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
     plugins: {
       legend: {
         position: 'top',
+        labels: {
+          color: '#ffffff',  // White text for legend labels
+          font: {
+            size: 12
+          }
+        }
       },
       title: {
         display: true,
-        text: 'Patient Discovery Channel Trends'
+        text: 'Patient Discovery Channel Trends',
+        color: '#ffffff',    // White text for title
+        font: {
+          size: 16,
+          weight: 'bold'
+        }
+      },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleColor: '#ffffff',
+        bodyColor: '#ffffff',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1
       }
     },
     scales: {
       y: {
         beginAtZero: true,
         ticks: {
+          color: '#ffffff',  // White text for y-axis ticks
           stepSize: 1
+        },
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'  // Subtle white grid lines
         }
       },
       x: {
         grid: {
           display: false
+        },
+        ticks: {
+          color: '#ffffff'  // White text for x-axis ticks
         }
       }
     },
@@ -216,7 +248,14 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
   };
 
   return (
-    <div style={{ width: '100%', height: '400px' }}>
+    <div style={{ 
+      width: '100%', 
+      height: '400px',
+      backgroundColor: '#1E2023',  // Dark background
+      padding: '20px',
+      borderRadius: '8px',
+      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+    }}>
       <div style={{ marginBottom: '20px' }}>
         <select
           value={selectedChannel}
@@ -224,9 +263,12 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
           style={{
             padding: '8px',
             borderRadius: '4px',
-            border: '1px solid #ccc',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
             fontSize: '14px',
-            minWidth: '200px'
+            minWidth: '200px',
+            backgroundColor: '#2A2D31',  // Slightly lighter than background
+            color: '#ffffff',
+            outline: 'none'
           }}
         >
           <option value="all">All Channels</option>
@@ -243,7 +285,8 @@ const DiscoveryTrends = ({ hospitalId, doctorId, timeRange, startDate, endDate }
           display: 'flex', 
           justifyContent: 'center', 
           alignItems: 'center', 
-          height: '300px' 
+          height: '300px',
+          color: '#ffffff'  // White text for loading indicator
         }}>
           Loading...
         </div>
