@@ -13,7 +13,8 @@ const filterOptions = [
   { label: 'Location', value: 'location' },
   { label: 'Age', value: 'age' },
   { label: 'Gender', value: 'gender' },
-  { label: 'Distance Traveled', value: 'distance' },
+  { label: 'Distance Traveled', value: 'distance_travelled' },
+  { label: 'Duration Taken', value: 'duration_travelled' },
   { label: 'Discovery Channel', value: 'discoveryChannel' },
   { label: 'Day of the Week', value: 'day_of_week' },
   { label: 'Weekday/Weekend', value: 'weekdayWeekend' },
@@ -169,6 +170,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
     try {
       console.log('hospitalid',hospitalId);
       console.log('search function called with value:', selectedFields);
+      
       console.log(selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value||null);
       //age_max - for between rangeend and for above rangeend
       const selectedAgeRange = selectedFields.find((ele) => ele.name === 'age');
@@ -178,6 +180,18 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
       const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') 
       ? selectedAgeRange?.rangeStart 
       : (selectedAgeRange?.value === 'all' ? null : null);
+      const selectedDistanceRange = selectedFields.find((ele) => ele.name === 'distance_travelled');
+      console.log(selectedDistanceRange);
+      const distance_max=(selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') 
+      ? selectedDistanceRange?.rangeEnd: (selectedDistanceRange?.value === 'all' ? null : null);
+      const distance_min=(selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above')? selectedDistanceRange?.rangeStart 
+      : (selectedDistanceRange?.value === 'all' ? null : null);
+      console.log('distance max and distance min',distance_max,distance_min);
+      const selectedDurationRange = selectedFields.find((ele) => ele.name === 'duration_travelled');
+      const duration_max=(selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') 
+      ? selectedDurationRange?.rangeEnd: (selectedDurationRange?.value === 'all' ? null : null);
+      const duration_min=(selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above')? selectedDurationRange?.rangeStart 
+      : (selectedDurationRange?.value === 'all' ? null : null);
       console.log('day of week',selectedFields.find((ele) => ele.name === "day_of_week")?.value ?? null);
       
       const { data, error } = await supabase.rpc('dynamic_patient_count', {        
@@ -205,7 +219,11 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
         p_time_range:selectedRange,
         p_weekday:selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value === "all" 
         ? null 
-        : selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
+        : selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null,
+        p_distance_min: distance_min ?? null ,
+        p_distance_max:distance_max?? null,
+        p_duration_min:duration_min??null,
+        p_duration_max:duration_max??null
       });
   
       if (error) {
@@ -256,19 +274,46 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
       const selectedAgeRange = fields.find((ele) => ele.name === 'age');
       const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeEnd : null;
       const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeStart : null;
+      const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
+      const distance_max= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
+      const distance_min= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
+
+      const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
+      const duration_max= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
+      const duration_min= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
+      console.log('durations',duration_max,duration_min);
       const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
         p_group_by:comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField === "weekdayWeekend" ? 'day_of_week' :comparisonField,
         p_secondary_group_by:comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField=== "weekdayWeekend" ? 'day_of_week' :comparisonField,//fields.find((item) => item.name === 'location') ? "main_area" : null,
         p_start_date: startDate, // Use actual UUID
         p_end_date: endDate,
-        p_gender:fields.find((item) => item.name === 'gender')?.value|| null,
-        p_address: fields.find((item) => item.name === 'location')?.value|| null,
+        p_gender:fields.find((ele) => ele.name === "gender")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "gender")?.value ?? null,
+        p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === 'location')?.value || null,
         p_min_age:min_age,
         p_max_age:max_age,
-        p_discovery:fields.find((item) => item.name === 'discoveryChannel')?.value|| null,
+        p_discovery:fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
         p_time_range:selectedRange,
         p_hospital_id :hospitalId,
-        p_doctor_id:selectedDoctorId
+        p_doctor_id:selectedDoctorId,
+        p_distance_min:distance_min,
+        p_distance_max:distance_max,
+        p_type:fields.find((ele) => ele.name === "appointment_type")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+        p_duration_max:duration_max,
+        p_duration_min:duration_min,
+        p_day_of_week:fields.find((ele) => ele.name === "day_of_week")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
+        p_weekday:fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
       });
 
       console.log('locations',data);
@@ -409,22 +454,48 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
       try {
         
         const selectedAgeRange = fields.find((ele) => ele.name === 'age');
-        const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeEnd : null;
-        const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeStart : null;
-        console.log('time range dates',startDate);
+        const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeStart : null;
+        const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeEnd : null;
+        const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
+      const distance_max= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
+      const distance_min= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
+        console.log('time range dates',min_age,max_age);
+
+        const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
+      const duration_max= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
+      const duration_min= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
         const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
           p_group_by: 'time_range',
           p_secondary_group_by: 'time_range',
           p_start_date: startDate,
           p_end_date: endDate,
-          p_gender: fields.find((item) => item.name === 'gender')?.value || null,
-          p_address: fields.find((item) => item.name === 'location')?.value || null,
+          p_gender: fields.find((ele) => ele.name === "gender")?.value === "all"
+          ? null 
+          : fields.find((ele) => ele.name === "gender")?.value ?? null,
+          p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
+          ? null 
+          : fields.find((ele) => ele.name === 'location')?.value || null,
           p_min_age: min_age,
           p_max_age: max_age,
-          p_discovery: fields.find((item) => item.name === 'discoveryChannel')?.value || null,
+          p_discovery: fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
+          ? null 
+          : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
           p_time_range: selectedRange,
           p_hospital_id: hospitalId,
           p_doctor_id: selectedDoctorId,
+          p_distance_min:distance_min,
+          p_distance_max:distance_max,
+          p_type:fields.find((ele) => ele.name === "appointment_type")?.value === "all"
+          ? null 
+          : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+          p_duration_max:duration_max??null,
+          p_duration_min:duration_min??null,
+          p_day_of_week:fields.find((ele) => ele.name === "day_of_week")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
+        p_weekday:fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+        ? null 
+        : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
         });
 
         if (error) {
@@ -509,7 +580,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
               <option value="below">Below</option>
               <option value="above">Above</option>
             </Dropdown>
-            {(field.value === 'between' || field.value === 'below' ) && (
+            {(field.value === 'between' || field.value === 'below' || field.value === 'above') && (
               <Input
                 type="number"
                 placeholder="Enter age"
@@ -517,7 +588,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
                 onChange={(e) => handleInputChange(field.id, 'rangeStart', e.target.value)}
               />
             )}
-            {(field.value === 'between'|| field.value === 'above') && (
+            {(field.value === 'between') && (
               <Input
                 type="number"
                 placeholder="End age"
@@ -535,7 +606,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
             <option value="Female">Female</option>
           </Dropdown>
         );
-      case 'distance':
+      case 'distance_travelled':
         return (
           <>
             <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
@@ -556,6 +627,33 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
               <Input
                 type="number"
                 placeholder="End distance"
+                value={field.rangeEnd || ''}
+                onChange={(e) => handleInputChange(field.id, 'rangeEnd', e.target.value)}
+              />
+            )}
+          </>
+        );
+        case 'duration_travelled':
+        return (
+          <>
+            <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+              <option value="all">All</option>
+              <option value="between">Between</option>
+              <option value="below">Below</option>
+              <option value="above">Above</option>
+            </Dropdown>
+            {(field.value === 'between' || field.value === 'below' || field.value === 'above') && (
+              <Input
+                type="number"
+                placeholder="Start duration"
+                value={field.rangeStart || ''}
+                onChange={(e) => handleInputChange(field.id, 'rangeStart', e.target.value)}
+              />
+            )}
+            {field.value === 'between' && (
+              <Input
+                type="number"
+                placeholder="End duration"
                 value={field.rangeEnd || ''}
                 onChange={(e) => handleInputChange(field.id, 'rangeEnd', e.target.value)}
               />
@@ -618,7 +716,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           <FieldContainer key={field.id}>
             <Dropdown
               value={field.name}
-              onChange={(e) => handleFieldChange(field.id, e.target.value, '')} // Update the name and reset the value
+              onChange={(e) => handleFieldChange(field.id, e.target.value, 'all')} // Update the name and reset the value
             >
               <option value="">Select Field</option>
               {filterOptions.map((option) => (
