@@ -73,8 +73,9 @@ const AgeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
         .select('age_settings')
         .eq('hospital_id', hospitalId)
         .single();
-
+  
       if (error) throw error;
+      
       if (data?.age_settings) {
         const sortedBins = [...data.age_settings].sort((a, b) => {
           if (a.start === '<') return -1;
@@ -85,9 +86,18 @@ const AgeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
         });
         setAgeBins(sortedBins);
         setTempBins(sortedBins);
+      } else {
+        // If no age_settings exist, save and use default bins
+        console.log('No age settings found, saving default bins...');
+        await saveAgeBins(defaultAgeBins);
+        setAgeBins(defaultAgeBins);
+        setTempBins(defaultAgeBins);
       }
     } catch (error) {
       console.error('Error fetching age bins:', error);
+      // Even if there's an error, we'll use default bins locally
+      setAgeBins(defaultAgeBins);
+      setTempBins(defaultAgeBins);
     }
   };
 
