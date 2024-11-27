@@ -1,4 +1,3 @@
-// src/components/widgets/BookingTypeWidget.js
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 
@@ -8,16 +7,20 @@ const BookingTypeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate
   const [showPercentage, setShowPercentage] = useState(false);
   const [totalVisits, setTotalVisits] = useState(0);
 
-  // Define all possible booking types
-  const allBookingTypes = [
-    'Booking',
-    'Walk-in'
-  ];
+  // Define all possible booking types and their variations
+  const bookingTypeMapping = {
+    'Booking': ['Booking', 'BOOKING'],
+    'Walk-in': ['Walk-in', 'WALK-IN'],
+    'Emergency': ['Emergency', 'EMERGENCY']
+  };
+
+  const allBookingTypes = Object.keys(bookingTypeMapping);
 
   // Color mapping for different booking types
   const bookingTypeColors = {
     'Booking': '#4CAF50',    // Green
-    'Walk-in': '#FF9800'     // Orange
+    'Walk-in': '#FF9800',    // Orange
+    'Emergency': '#DC3545'   // Red
   };
 
   // SVG icons for booking types
@@ -30,6 +33,11 @@ const BookingTypeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate
     'Walk-in': (
       <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
         <path d="M14.12,10H19V8.2H15.38L13.38,4.87C13.08,4.37 12.54,4.03 11.92,4.03C11.74,4.03 11.58,4.06 11.42,4.11L6,5.8V11H7.8V7.33L9.91,6.67L6,22H7.8L10.67,13.89L13,17V22H14.8V15.59L12.31,11.05L13.04,8.18M14,3.8C15,3.8 15.8,3 15.8,2C15.8,1 15,0.2 14,0.2C13,0.2 12.2,1 12.2,2C12.2,3 13,3.8 14,3.8Z" />
+      </svg>
+    ),
+    'Emergency': (
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16" />
       </svg>
     )
   };
@@ -83,57 +91,63 @@ const BookingTypeWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 };
 
-  const fetchBookingTypes = async () => {
-    try {
-      setLoading(true);
-      const { currentStart, currentEnd } = getTimeRanges();
+const fetchBookingTypes = async () => {
+  try {
+    setLoading(true);
+    const { currentStart, currentEnd } = getTimeRanges();
 
-      let query = supabase
-        .from('appointments')
-        .select('appointment_type')
-        .eq('hospital_id', hospitalId)
-        .gte('appointment_time', formatDate(currentStart))
-        .lte('appointment_time', formatDate(currentEnd))
-        .in('appointment_type', allBookingTypes);
+    // Get all possible variations for the query
+    const allVariations = Object.values(bookingTypeMapping).flat();
 
-      if (doctorId !== 'all') {
-        query = query.eq('doctor_id', doctorId);
-      }
+    let query = supabase
+      .from('appointments')
+      .select('appointment_type')
+      .eq('hospital_id', hospitalId)
+      .gte('appointment_time', formatDate(currentStart))
+      .lte('appointment_time', formatDate(currentEnd))
+      .in('appointment_type', allVariations);
 
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      // Initialize counts for all booking types
-      const bookingTypeCounts = allBookingTypes.reduce((acc, type) => {
-        acc[type] = 0;
-        return acc;
-      }, {});
-
-      // Count occurrences of each booking type
-      data.forEach(item => {
-        const type = item.appointment_type;
-        if (allBookingTypes.includes(type)) {
-          bookingTypeCounts[type]++;
-        }
-      });
-
-      // Convert to array and include all booking types
-      const sortedBookingTypes = allBookingTypes.map(type => ({
-        source: type,
-        count: bookingTypeCounts[type],
-        percentage: (bookingTypeCounts[type] / (data.length || 1)) * 100
-      })).sort((a, b) => b.count - a.count);
-
-      setBookingTypes(sortedBookingTypes);
-      setTotalVisits(data.length);
-
-    } catch (error) {
-      console.error('Error fetching booking types:', error);
-    } finally {
-      setLoading(false);
+    if (doctorId !== 'all') {
+      query = query.eq('doctor_id', doctorId);
     }
-  };
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    // Initialize counts for all booking types
+    const bookingTypeCounts = allBookingTypes.reduce((acc, type) => {
+      acc[type] = 0;
+      return acc;
+    }, {});
+
+    // Count occurrences of each booking type, handling variations
+    data.forEach(item => {
+      const appointmentType = item.appointment_type;
+      for (const [standardType, variations] of Object.entries(bookingTypeMapping)) {
+        if (variations.includes(appointmentType)) {
+          bookingTypeCounts[standardType]++;
+          break;
+        }
+      }
+    });
+
+    // Convert to array and include all booking types
+    const sortedBookingTypes = allBookingTypes.map(type => ({
+      source: type,
+      count: bookingTypeCounts[type],
+      percentage: (bookingTypeCounts[type] / (data.length || 1)) * 100
+    })).sort((a, b) => b.count - a.count);
+
+    setBookingTypes(sortedBookingTypes);
+    setTotalVisits(data.length);
+
+  } catch (error) {
+    console.error('Error fetching booking types:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     if (hospitalId && doctorId && (timeRange !== 'custom' || (startDate && endDate))) {

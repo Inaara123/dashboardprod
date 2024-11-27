@@ -10,8 +10,7 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
 
   const getTimeRanges = () => {
     const now = new Date()
-    console.log("the local time is : ",now)
-    console.log("the now time is : ", new Date())
+
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     let currentStart, currentEnd, previousStart, previousEnd;
@@ -81,10 +80,7 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
     try {
       setLoading(true);
       const { currentStart, currentEnd, previousStart, previousEnd } = getTimeRanges();
-      console.log("the previous start is : ",previousStart.toISOString())
-      console.log("the previous end is : ",previousEnd.toISOString())
-      console.log("the previous start is :",previousStart)
-      console.log("the previous end is : ",previousEnd  )
+
 
       let query = supabase
         .from('appointments')
@@ -117,8 +113,6 @@ const VisitsWidget = ({ hospitalId, doctorId, timeRange, startDate, endDate }) =
       if (previousError) throw previousError;
 
       setVisitsCount(currentCount || 0);
-      console.log("the previous count is : ",previousCount)
-      console.log("the current count is : ",currentCount)
 
       if (previousCount > 0) {
         const percentageChange = ((currentCount - previousCount) / previousCount) * 100;

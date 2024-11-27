@@ -1,4 +1,3 @@
-// src/components/Login.js
 import React, { useState } from 'react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
@@ -49,15 +48,19 @@ const Login = () => {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      backgroundColor: '#f0f0f0',
+      backgroundColor: '#1E2023',
       fontFamily: 'Arial, sans-serif',
       padding: '20px',
     },
+    logo: {
+      width: '380px', // Adjust this value based on your logo's desired size
+      marginBottom: '30px',
+      display: 'block',
+    },
     form: {
-      backgroundColor: 'white',
+      backgroundColor: '#1E2023',
       padding: '40px',
-      borderRadius: '8px',
-      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+      borderRadius: '0px',
       width: '100%',
       maxWidth: '400px',
     },
@@ -65,41 +68,49 @@ const Login = () => {
       fontSize: '24px',
       marginBottom: '20px',
       textAlign: 'center',
-      color: '#333',
+      color: '#E4E6EB',
     },
     input: {
       display: 'block',
       width: '100%',
       padding: '10px',
       marginBottom: '15px',
-      border: '1px solid #ddd',
+      border: '1px solid #3A3D42',
       borderRadius: '4px',
       fontSize: '16px',
+      backgroundColor: '#1E2023',
+      color: '#E4E6EB',
+      '::placeholder': {
+        color: '#9CA3AF',
+      },
     },
     button: {
       width: '100%',
       padding: '12px',
-      backgroundColor: '#007bff',
-      color: 'white',
+      backgroundColor: '#3B82F6',
+      color: '#E4E6EB',
       border: 'none',
       borderRadius: '4px',
       cursor: 'pointer',
       fontSize: '16px',
       transition: 'background-color 0.3s',
       marginBottom: '10px',
+      '&:hover': {
+        backgroundColor: '#2563EB',
+      },
     },
     buttonDisabled: {
-      backgroundColor: '#ccc',
+      backgroundColor: '#374151',
       cursor: 'not-allowed',
     },
     errorMessage: {
-      color: 'red',
+      color: '#EF4444',
       marginTop: '10px',
       textAlign: 'center',
     },
     loader: {
-      border: '4px solid #f3f3f3',
-      borderTop: '4px solid #007bff',
+      border: '4px solid #374151',
+      borderTop: '4px solid #3B82F6',
       borderRadius: '50%',
       width: '30px',
       height: '30px',
@@ -107,20 +118,30 @@ const Login = () => {
       margin: '20px auto',
     },
     link: {
-      color: '#007bff',
+      color: '#60A5FA',
       textDecoration: 'underline',
       cursor: 'pointer',
       marginTop: '10px',
       textAlign: 'center',
+      '&:hover': {
+        color: '#93C5FD',
+      },
     }
   };
 
   return (
     <div style={styles.app}>
       <div style={styles.form}>
+        <img 
+          src="/nobglogo.png" 
+          alt="Company Logo" 
+          style={styles.logo}
+        />
+
         <h2 style={styles.title}>
-          {mode === 'login' ? 'Login' : 'Forgot Password'}
+          Analytica {mode === 'login' ? 'Login' : 'Forgot Password'}
         </h2>
+
         <input
           type="text"
           placeholder="Email"

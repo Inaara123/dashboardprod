@@ -1,9 +1,7 @@
-// src/components/widgets/GenderVsBooking.js
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { HeatMapGrid } from 'react-grid-heatmap';
 import Switch from 'react-switch';
-import PropTypes from 'prop-types';
 import { supabase } from '../../supabaseClient';
 
 const WidgetContainer = styled.div`
@@ -18,26 +16,25 @@ const WidgetContainer = styled.div`
   margin-bottom: 20px;
 `;
 
-const YLabelContainer = styled.div`
-  display: flex;
-  align-items: center;
-  padding-right: 10px;
-  justify-content: flex-end;
-  width: 100px;
-`;
-
 const WidgetTitle = styled.h3`
   font-size: 18px;
   margin-bottom: 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: relative;
 `;
 
 const HeatmapContainer = styled.div`
   width: 100%;
   height: auto;
+`;
+
+const YLabelContainer = styled.div`
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+  justify-content: flex-end;
+  width: 100px;
 `;
 
 const BreakdownContainer = styled.div`
@@ -86,52 +83,83 @@ const PercentageBar = styled.div`
   }
 `;
 
-const ErrorMessage = styled.div`
-  color: #ff6b6b;
-  padding: 20px;
-  text-align: center;
-  background-color: rgba(255, 107, 107, 0.1);
-  border-radius: 8px;
-  margin: 10px 0;
-`;
-
 const GenderVsBooking = ({ hospitalId, doctorId, timeRange, startDate, endDate }) => {
-  const [state, setState] = useState({
-    showPercentage: true,
-    heatmapData: [],
-    totalPatients: 0,
-    locations: ['Male', 'Female'],
-    bookingTypes: ['Booking', 'Walk-in', 'Emergency'],
-    isLoading: true,
-    error: null,
-    genderBreakdown: { male: {}, female: {} },
-    genderTotals: { male: 0, female: 0 }
+  const [data, setData] = useState({
+    male: { total: 0, types: {} },
+    female: { total: 0, types: {} }
   });
-
-  const getTimeRangeFilter = () => {
-    const now = new Date();
-    switch (timeRange) {
-      case '1day':
-        return new Date(now - 24 * 60 * 60 * 1000).toISOString();
-      case '1week':
-        return new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-      case '1month':
-        return new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
-      case '3months':
-        return new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString();
-      case 'custom':
-        return startDate ? new Date(startDate).toISOString() : null;
-      default:
-        return new Date(now - 24 * 60 * 60 * 1000).toISOString();
-    }
-  };
+  const [showPercentage, setShowPercentage] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [bookingTypes, setBookingTypes] = useState([]);
 
   useEffect(() => {
-    let isMounted = true;
+    const getTimeRanges = () => {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      let currentStart, currentEnd;
+      
+      switch (timeRange) {
+        case '1day':
+          currentStart = today;
+          currentEnd = now;
+          break;
+        case '1week':
+          currentStart = new Date(today);
+          currentStart.setDate(currentStart.getDate() - 7);
+          currentEnd = now;
+          break;
+        case '1month':
+          currentStart = new Date(today);
+          currentStart.setMonth(currentStart.getMonth() - 1);
+          currentEnd = now;
+          break;
+        case '3months':
+          currentStart = new Date(today);
+          currentStart.setMonth(currentStart.getMonth() - 3);
+          currentEnd = now;
+          break;
+        case 'custom':
+          if (startDate && endDate) {
+            currentStart = new Date(startDate);
+            currentEnd = new Date(endDate);
+          }
+          break;
+        default:
+          currentStart = today;
+          currentEnd = now;
+      }
+      
+      return { currentStart, currentEnd };
+    };
 
-    const fetchBookingData = async () => {
+    const formatDate = (date) => {
+      return date.toISOString();
+    };
+
+    const fetchData = async () => {
       try {
-        setState(prev => ({ ...prev, isLoading: true, error: null }));
+        setIsLoading(true);
+        const { currentStart, currentEnd } = getTimeRanges();
+
+        // First, get all distinct appointment types for the given time range
+        let typesQuery = supabase
+          .from('appointments')
+          .select('appointment_type')
+          .eq('hospital_id', hospitalId)
+          .gte('appointment_time', formatDate(currentStart))
+          .lte('appointment_time', formatDate(currentEnd))
+          .not('appointment_type', 'is', null);
+
+        if (doctorId !== 'all') {
+          typesQuery = typesQuery.eq('doctor_id', doctorId);
+        }
+
+        const { data: typesData } = await typesQuery;
+        const uniqueTypes = [...new Set(typesData.map(item => item.appointment_type))].sort();
+        setBookingTypes(uniqueTypes);
+
+        // Then get the main data
         let query = supabase
           .from('appointments')
           .select(`
@@ -140,79 +168,53 @@ const GenderVsBooking = ({ hospitalId, doctorId, timeRange, startDate, endDate }
               gender
             )
           `)
-          .eq('hospital_id', hospitalId);
+          .eq('hospital_id', hospitalId)
+          .gte('appointment_time', formatDate(currentStart))
+          .lte('appointment_time', formatDate(currentEnd));
 
         if (doctorId !== 'all') {
           query = query.eq('doctor_id', doctorId);
         }
 
-        if (timeRange === 'custom' && startDate && endDate) {
-          query = query
-            .gte('appointment_time', startDate)
-            .lte('appointment_time', endDate);
-        } else {
-          const timeFilter = getTimeRangeFilter();
-          if (timeFilter) {
-            query = query.gte('appointment_time', timeFilter);
-          }
-        }
-
-        const { data, error } = await query;
-
+        const { data: appointments, error } = await query;
         if (error) throw error;
 
-        if (isMounted) {
-          const matrix = {};
-          const breakdown = { male: {}, female: {} };
-          const totals = { male: 0, female: 0 };
-          let totalCount = 0;
+        const newData = {
+          male: { total: 0, types: {} },
+          female: { total: 0, types: {} }
+        };
 
-          data.forEach(appointment => {
-            const gender = appointment.patients.gender;
-            const bookingType = appointment.appointment_type;
+        // Initialize all types with 0
+        uniqueTypes.forEach(type => {
+          newData.male.types[type] = 0;
+          newData.female.types[type] = 0;
+        });
 
-            if (!matrix[gender]) matrix[gender] = {};
-            if (!matrix[gender][bookingType]) matrix[gender][bookingType] = 0;
-            if (!breakdown[gender.toLowerCase()][bookingType]) breakdown[gender.toLowerCase()][bookingType] = 0;
-            
-            matrix[gender][bookingType]++;
-            breakdown[gender.toLowerCase()][bookingType]++;
-            totals[gender.toLowerCase()]++;
-            totalCount++;
-          });
+        // Process appointments
+        appointments.forEach(appointment => {
+          const gender = appointment.patients.gender.toLowerCase();
+          const appointmentType = appointment.appointment_type;
 
-          const heatmapArray = state.locations.map(gender =>
-            state.bookingTypes.map(type => matrix[gender]?.[type] || 0)
-          );
+          if (gender in newData && appointmentType) {
+            newData[gender].total++;
+            newData[gender].types[appointmentType]++;
+          }
+        });
 
-          setState(prev => ({
-            ...prev,
-            heatmapData: heatmapArray,
-            genderBreakdown: breakdown,
-            genderTotals: totals,
-            totalPatients: totalCount,
-            isLoading: false
-          }));
-        }
+        setData(newData);
       } catch (error) {
-        if (isMounted) {
-          setState(prev => ({
-            ...prev,
-            error: error.message,
-            isLoading: false
-          }));
-        }
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchBookingData();
-
-    return () => {
-      isMounted = false;
-    };
+    if (hospitalId && doctorId && (timeRange !== 'custom' || (startDate && endDate))) {
+      fetchData();
+    }
   }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
-  if (state.isLoading) {
+  if (isLoading || bookingTypes.length === 0) {
     return (
       <WidgetContainer>
         <WidgetTitle>Gender vs Booking Type</WidgetTitle>
@@ -221,58 +223,43 @@ const GenderVsBooking = ({ hospitalId, doctorId, timeRange, startDate, endDate }
     );
   }
 
-  if (state.error) {
-    return (
-      <WidgetContainer>
-        <WidgetTitle>Gender vs Booking Type</WidgetTitle>
-        <ErrorMessage>Error: {state.error}</ErrorMessage>
-      </WidgetContainer>
-    );
-  }
-
-  const formattedData = state.heatmapData?.map((row) =>
-    row.map((value) => (state.showPercentage ? ((value / state.totalPatients) * 100).toFixed(2) : value))
-  ) || [];
-
-  const maxValue = Math.max(...(state.heatmapData?.flat() || [0]));
-
-  const renderBreakdown = (gender, total) => {
-    if (!state.genderBreakdown[gender.toLowerCase()]) return null;
-    
-    return Object.entries(state.genderBreakdown[gender.toLowerCase()])
-      .sort(([, a], [, b]) => b - a)
-      .map(([bookingType, value]) => {
-        const percentage = ((value / total) * 100).toFixed(1);
-        return (
-          <BreakdownItem key={`${gender}-${bookingType}`}>
-            {percentage}% of {gender}s prefer {bookingType}
-            <PercentageBar percentage={percentage} />
-          </BreakdownItem>
-        );
-      });
-  };
+  const formattedData = ['male', 'female'].map(gender => {
+    return bookingTypes.map(type => {
+      const count = data[gender].types[type] || 0;
+      return showPercentage 
+        ? ((count / (data[gender].total || 1)) * 100).toFixed(1)
+        : count;
+    });
+  });
 
   return (
     <WidgetContainer>
       <WidgetTitle>
         Gender vs Booking Type
         <Switch
-          onChange={() => setState(prev => ({ ...prev, showPercentage: !prev.showPercentage }))}
-          checked={state.showPercentage}
+          onChange={() => setShowPercentage(!showPercentage)}
+          checked={showPercentage}
           offColor="#888"
           onColor="#66ff66"
           uncheckedIcon={false}
           checkedIcon={false}
         />
       </WidgetTitle>
+      
       <HeatmapContainer>
         <HeatMapGrid
           data={formattedData}
-          xLabels={state.bookingTypes}
-          yLabels={state.locations}
+          xLabels={bookingTypes}
+          yLabels={['Male', 'Female']}
           cellRender={(x, y, value) => (
-            <div title={`Gender: ${state.locations[y]}, Booking Type: ${state.bookingTypes[x]} = ${value}${state.showPercentage ? '%' : ''}`}>
-              {value}{state.showPercentage ? '%' : ''}
+            <div style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {value}{showPercentage ? '%' : ''}
             </div>
           )}
           xLabelsStyle={() => ({
@@ -285,43 +272,53 @@ const GenderVsBooking = ({ hospitalId, doctorId, timeRange, startDate, endDate }
             marginRight: '15px',
           })}
           cellStyle={(x, y) => {
-            const rawValue = state.heatmapData[y]?.[x] || 0;
-            const alpha = maxValue > 0 ? rawValue / maxValue : 0;
+            const gender = ['male', 'female'][y];
+            const type = bookingTypes[x];
+            const value = data[gender].types[type] || 0;
+            const total = data[gender].total || 1;
+            const percentage = value / total;
             return {
-              background: `rgba(0, 128, 255, ${Math.min(Math.max(alpha, 0.1), 1)})`,
+              background: `rgba(0, 128, 255, ${Math.min(Math.max(percentage, 0.1), 1)})`,
               fontSize: '0.9rem',
               color: 'white',
               border: '1px solid #ffffff',
+              transition: 'all 0.3s ease'
             };
           }}
           cellHeight="5.5rem"
           xLabelsPos="top"
           yLabelsPos="left"
           yLabelsRender={(label) => (
-            <YLabelContainer>
-              {label}
-            </YLabelContainer>
+            <YLabelContainer>{label}</YLabelContainer>
           )}
           square
         />
-        <div style={{ textAlign: 'center', marginTop: '10px' }}>
-          <span style={{ color: '#a5a5a5' }}>
-            {state.showPercentage ? 'Showing Percentages' : 'Showing Actual Values'}
-          </span>
-        </div>
       </HeatmapContainer>
 
+      <BreakdownContainer>
+        {['Male', 'Female'].map(gender => {
+          const genderData = data[gender.toLowerCase()];
+          if (!genderData.total) return null;
 
+          return (
+            <GenderSection key={gender}>
+              <GenderTitle>{gender} Breakdown (Total: {genderData.total})</GenderTitle>
+              {bookingTypes.map(type => {
+                const count = genderData.types[type] || 0;
+                const percentage = ((count / genderData.total) * 100).toFixed(1);
+                return (
+                  <BreakdownItem key={`${gender}-${type}`}>
+                    {percentage}% of {gender}s came through {type} ({count} patients)
+                    <PercentageBar percentage={percentage} />
+                  </BreakdownItem>
+                );
+              })}
+            </GenderSection>
+          );
+        })}
+      </BreakdownContainer>
     </WidgetContainer>
   );
-};
-
-GenderVsBooking.propTypes = {
-  hospitalId: PropTypes.string.isRequired,
-  doctorId: PropTypes.string.isRequired,
-  timeRange: PropTypes.string.isRequired,
-  startDate: PropTypes.string,
-  endDate: PropTypes.string
 };
 
 export default GenderVsBooking;

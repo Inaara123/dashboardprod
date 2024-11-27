@@ -199,7 +199,7 @@ const AgeVsDiscovery = ({ hospitalId, doctorId, timeRange, startDate, endDate })
 
         const { data: appointments, error: queryError } = await query;
         if (queryError) throw queryError;
-
+        console.log("the data in Age vs Discovery is : ",data)
         const result = {};
         const channels = new Set();
 

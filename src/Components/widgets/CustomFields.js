@@ -1,13 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
-import { Line,Bar } from 'react-chartjs-2';
+import { Line, Bar } from 'react-chartjs-2';
 import styled from 'styled-components';
 import { supabase } from '../../supabaseClient';
 import Switch from 'react-switch';
 import dayjs from 'dayjs';
 import { Chart as ChartJS, BarElement, CategoryScale, LinearScale, Title, Tooltip, Legend } from 'chart.js';
+
 // Register components
 ChartJS.register(BarElement, CategoryScale, LinearScale, Title, Tooltip, Legend);
+
 // Define filter options
 const filterOptions = [
   { label: 'Location', value: 'location' },
@@ -22,19 +23,18 @@ const filterOptions = [
 ];
 
 // Styled components
-
 const WidgetContainer = styled.div`
   background-color: #2c2f33;
   padding: 20px;
   border-radius: 15px;
   color: #fff;
-  width: 300px; 
-  height: auto; 
+  width: 300px;
+  height: auto;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  margin-top: 20px
+  margin-top: 20px;
 `;
 
 const WidgetTitle = styled.h3`
@@ -44,10 +44,11 @@ const WidgetTitle = styled.h3`
   justify-content: space-between;
   align-items: center;
 `;
+
 const ChartContainer = styled.div`
   flex-grow: 1;
   width: 100%;
-  height: 100%; /* Make the chart take up the full height */
+  height: 100%;
 `;
 
 const Container = styled.div`
@@ -56,6 +57,7 @@ const Container = styled.div`
   display: flex;
   justify-content: space-between;
 `;
+
 const FieldsContainer = styled.div`
   flex: 1;
 `;
@@ -65,6 +67,14 @@ const FieldContainer = styled.div`
   align-items: center;
   margin-bottom: 10px;
   gap: 10px;
+`;
+
+const ResultContainer = styled.div`
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #333;
+  border-radius: 8px;
+  color: #fff;
 `;
 
 const Dropdown = styled.select`
@@ -108,148 +118,230 @@ const ComparisonContainer = styled.div`
   justify-content: flex-start;
   align-items: center;
 `;
+
 const TrendsContainer = styled.div`
-  margin-top: 10px; // Reduced top margin
-  padding: 10px; // Reduced padding
+  margin-top: 10px;
+  padding: 10px;
   background-color: #333;
   border: 1px solid #444;
-  border-radius: 8px; // Slightly smaller border radius
-  box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.2); // Slightly reduced shadow
-  max-width: 60%; // Reduce width if needed for compact appearance
+  border-radius: 8px;
+  box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.2);
+  max-width: 60%;
 `;
 
-
-
-// Define your CustomFields component
-const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedRange,startDate, endDate,width,height }) => {
-  
+const CustomFields = ({ hospitalId, selectedDoctorId, selectedRange, setSelectedRange, startDate, endDate, width, height }) => {
   const [fields, setFields] = useState([]);
   const [comparisonField, setComparisonField] = useState('none');
-  const [data, setData] = useState([]); // Data fetched from Supabase
-  const [locations, setLocations] = useState(['All']); // State for unique locations
+  const [data, setData] = useState(null);
+  const [locations, setLocations] = useState(['All']);
   const [showPercentage, setShowPercentage] = useState(true);
-  const [patientData, setPatientData] = useState([
-  ]);
+  const [patientData, setPatientData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [trendData, setTrendData] = useState(null);
-  // Function to fetch unique locations from the database
+
+  // Function to fetch unique locations
   const fetchUniqueLocations = async () => {
-    const { data:locationsData, error } = await supabase.rpc('get_distinct_main_area', {        
-      hospital_id_input:hospitalId, 
+    const { data: locationsData, error } = await supabase.rpc('get_distinct_main_area', {
+      hospital_id_input: hospitalId,
     });
-    
- // Ensure distinct values
-    console.log('selected range',selectedRange);
+
     if (error) {
       console.error('Error fetching locations:', error);
       return;
-    }    
+    }
     const uniqueLocations = locationsData.map((item) => item.main_area);
-    
     setLocations(['All', ...uniqueLocations]);
   };
 
-  // Fetch unique locations on component mount
   useEffect(() => {
     fetchUniqueLocations();
   }, []);
 
-
   const addField = () => {
     setFields([...fields, { id: fields.length, name: '', value: '', rangeStart: '', rangeEnd: '' }]);
-    console.log('The set fields are',fields);
   };
 
   const removeField = (id) => {
     setFields(fields.filter((field) => field.id !== id));
-    console.log('The removed  fields are',fields);
   };
 
-  const searchResult = async (selectedFields)  => {
-    
+  const searchResult = async (selectedFields) => {
     try {
-      console.log('hospitalid',hospitalId);
-      console.log('search function called with value:', selectedFields);
-      
-      console.log(selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value||null);
-      //age_max - for between rangeend and for above rangeend
       const selectedAgeRange = selectedFields.find((ele) => ele.name === 'age');
-      const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') 
-      ? selectedAgeRange?.rangeEnd 
-      : (selectedAgeRange?.value === 'all' ? null : null);
-      const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') 
-      ? selectedAgeRange?.rangeStart 
-      : (selectedAgeRange?.value === 'all' ? null : null);
+      const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below')
+        ? selectedAgeRange?.rangeEnd
+        : (selectedAgeRange?.value === 'all' ? null : null);
+      const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above')
+        ? selectedAgeRange?.rangeStart
+        : (selectedAgeRange?.value === 'all' ? null : null);
+
       const selectedDistanceRange = selectedFields.find((ele) => ele.name === 'distance_travelled');
-      console.log(selectedDistanceRange);
-      const distance_max=(selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') 
-      ? selectedDistanceRange?.rangeEnd: (selectedDistanceRange?.value === 'all' ? null : null);
-      const distance_min=(selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above')? selectedDistanceRange?.rangeStart 
-      : (selectedDistanceRange?.value === 'all' ? null : null);
-      console.log('distance max and distance min',distance_max,distance_min);
+      const distance_max = (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below')
+        ? selectedDistanceRange?.rangeEnd
+        : (selectedDistanceRange?.value === 'all' ? null : null);
+      const distance_min = (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above')
+        ? selectedDistanceRange?.rangeStart
+        : (selectedDistanceRange?.value === 'all' ? null : null);
+
       const selectedDurationRange = selectedFields.find((ele) => ele.name === 'duration_travelled');
-      const duration_max=(selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') 
-      ? selectedDurationRange?.rangeEnd: (selectedDurationRange?.value === 'all' ? null : null);
-      const duration_min=(selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above')? selectedDurationRange?.rangeStart 
-      : (selectedDurationRange?.value === 'all' ? null : null);
-      console.log('day of week',selectedFields.find((ele) => ele.name === "day_of_week")?.value ?? null);
-      
-      const { data, error } = await supabase.rpc('dynamic_patient_count', {        
+      const duration_max = (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below')
+        ? selectedDurationRange?.rangeEnd
+        : (selectedDurationRange?.value === 'all' ? null : null);
+      const duration_min = (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above')
+        ? selectedDurationRange?.rangeStart
+        : (selectedDurationRange?.value === 'all' ? null : null);
+
+      const { data: response, error } = await supabase.rpc('dynamic_patient_count', {
         p_location: selectedFields.find((ele) => ele.name === 'location')?.value === "all"
-        ? null 
-        : selectedFields.find((ele) => ele.name === 'location')?.value || null,
-        p_hospital_id:hospitalId, 
+          ? null
+          : selectedFields.find((ele) => ele.name === 'location')?.value || null,
+        p_hospital_id: hospitalId,
         p_discovery_channel: selectedFields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
-        ? null 
-        : selectedFields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
+          ? null
+          : selectedFields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
         p_age_min: min_age ?? null,
-        p_age_max:max_age ?? null,
-        p_doctor_id:selectedDoctorId,
-        p_day_of_week:selectedFields.find((ele) => ele.name === "day_of_week")?.value === "all"
-        ? null 
-        : selectedFields.find((ele) => ele.name === "day_of_week")?.value || null,
-        p_start_date:startDate,
-        p_end_date:endDate,
-        p_gender:selectedFields.find((ele) => ele.name === "gender")?.value === "all"
-        ? null 
-        : selectedFields.find((ele) => ele.name === "gender")?.value ?? null,
+        p_age_max: max_age ?? null,
+        p_doctor_id: selectedDoctorId,
+        p_day_of_week: selectedFields.find((ele) => ele.name === "day_of_week")?.value === "all"
+          ? null
+          : selectedFields.find((ele) => ele.name === "day_of_week")?.value || null,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_gender: selectedFields.find((ele) => ele.name === "gender")?.value === "all"
+          ? null
+          : selectedFields.find((ele) => ele.name === "gender")?.value ?? null,
         p_type: selectedFields.find((ele) => ele.name === "appointment_type")?.value === "all"
-        ? null 
-        : selectedFields.find((ele) => ele.name === "appointment_type")?.value ?? null,
-        p_time_range:selectedRange,
-        p_weekday:selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value === "all" 
-        ? null 
-        : selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null,
-        p_distance_min: distance_min ?? null ,
-        p_distance_max:distance_max?? null,
-        p_duration_min:duration_min??null,
-        p_duration_max:duration_max??null
+          ? null
+          : selectedFields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+        p_time_range: selectedRange,
+        p_weekday: selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+          ? null
+          : selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null,
+        p_distance_min: distance_min ?? null,
+        p_distance_max: distance_max ?? null,
+        p_duration_min: duration_min ?? null,
+        p_duration_max: duration_max ?? null
       });
-  
+
       if (error) {
         console.error('Error calling dynamic_patient_count:', error);
-        setData([]); // Clear data if error occurs
+        setData(null);
         return;
       }
-      console.log('day of weeks',data);
-      setData(data);
+
+      // Set the total count in a more readable format
+      setData(response[0]?.count || 0);
     } catch (err) {
       console.error('Error fetching filtered data:', err);
+      setData(null);
     }
-  }
+  };
+
+  const fetchPatientComparison = async () => {
+    setLoading(true);
+    setPatientData([]);
+
+    try {
+      const selectedAgeRange = fields.find((ele) => ele.name === 'age');
+      const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above')
+        ? selectedAgeRange?.rangeEnd
+        : null;
+      const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below')
+        ? selectedAgeRange?.rangeStart
+        : null;
+
+      const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
+      const distance_max = (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above')
+        ? selectedDistanceRange?.rangeEnd
+        : null;
+      const distance_min = (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below')
+        ? selectedDistanceRange?.rangeStart
+        : null;
+
+      const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
+      const duration_max = (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above')
+        ? selectedDurationRange?.rangeEnd
+        : null;
+      const duration_min = (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below')
+        ? selectedDurationRange?.rangeStart
+        : null;
+
+      const groupByField = comparisonField === "discoveryChannel"
+        ? 'how_did_you_get_to_know_us'
+        : comparisonField === "location"
+          ? 'main_area'
+          : comparisonField === "weekdayWeekend"
+            ? 'day_of_week'
+            : comparisonField;
+
+      const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
+        p_group_by: groupByField,
+        p_secondary_group_by: groupByField,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_gender: fields.find((ele) => ele.name === "gender")?.value === "all"
+          ? null
+          : fields.find((ele) => ele.name === "gender")?.value ?? null,
+        p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
+          ? null
+          : fields.find((ele) => ele.name === 'location')?.value || null,
+        p_min_age: min_age,
+        p_max_age: max_age,
+        p_discovery: fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
+          ? null
+          : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
+        p_time_range: selectedRange,
+        p_hospital_id: hospitalId,
+        p_doctor_id: selectedDoctorId,
+        p_distance_min: distance_min,
+        p_distance_max: distance_max,
+        p_type: fields.find((ele) => ele.name === "appointment_type")?.value === "all"
+          ? null
+          : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+        p_duration_max: duration_max,
+        p_duration_min: duration_min,
+        p_day_of_week: fields.find((ele) => ele.name === "day_of_week")?.value === "all"
+          ? null
+          : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
+        p_weekday: fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+          ? null
+          : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
+      });
+
+      if (error) {
+        console.error('Error fetching patient growth stats:', error.message);
+        setLoading(false);
+        return;
+      }
+
+      const formattedData = data.reduce((acc, item) => {
+        acc[`ageRange${item.group_value.replace("-", "_")}`] = item.count;
+        return acc;
+      }, {});
+
+      setPatientData(formattedData);
+      setLoading(false);
+    } catch (err) {
+      console.error('Fetch error:', err);
+      setLoading(false);
+    }
+  };
+
+  // Updated useEffect to include fields in dependency array
+  useEffect(() => {
+    if (comparisonField !== 'none' && fields.length > 0) {
+      fetchPatientComparison();
+    }
+  }, [comparisonField, selectedRange, startDate, endDate, fields]); // Added fields to dependency array
 
   const handleFieldChange = (id, name, value) => {
-   
     const newFields = fields.map((field) => {
-
       if (field.id === id) {
         return { ...field, name: name || field.name, value: value ?? field.value };
       }
       return field;
     });
     setFields(newFields);
-    console.log(`dropdown name :${name} and value : ${value}`);
-    console.log('fields values Changed:', fields);
   };
 
   const handleInputChange = (id, key, value) => {
@@ -261,137 +353,58 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
     });
     setFields(newFields);
   };
-
-  const fetchPatientComparison = async () => {
-    setLoading(true); // Start loading
-
-    setPatientData([]);
-   
-    try {
-      // Replace 'hospital_id' and '1_month' with your actual parameters
-      
-      console.log('hr',comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField === "weekdayWeekend" ? 'day_of_week' :comparisonField);
-      const selectedAgeRange = fields.find((ele) => ele.name === 'age');
-      const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeEnd : null;
-      const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeStart : null;
-      const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
-      const distance_max= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
-      const distance_min= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
-
-      const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
-      const duration_max= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
-      const duration_min= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
-      console.log('durations',duration_max,duration_min);
-      const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
-        p_group_by:comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField === "weekdayWeekend" ? 'day_of_week' :comparisonField,
-        p_secondary_group_by:comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField=== "weekdayWeekend" ? 'day_of_week' :comparisonField,//fields.find((item) => item.name === 'location') ? "main_area" : null,
-        p_start_date: startDate, // Use actual UUID
-        p_end_date: endDate,
-        p_gender:fields.find((ele) => ele.name === "gender")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "gender")?.value ?? null,
-        p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === 'location')?.value || null,
-        p_min_age:min_age,
-        p_max_age:max_age,
-        p_discovery:fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
-        p_time_range:selectedRange,
-        p_hospital_id :hospitalId,
-        p_doctor_id:selectedDoctorId,
-        p_distance_min:distance_min,
-        p_distance_max:distance_max,
-        p_type:fields.find((ele) => ele.name === "appointment_type")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
-        p_duration_max:duration_max,
-        p_duration_min:duration_min,
-        p_day_of_week:fields.find((ele) => ele.name === "day_of_week")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
-        p_weekday:fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
-      });
-
-      console.log('locations',data);
-      if (error) {
-        console.error('Error fetching patient growth stats:', error.message);
-        setLoading(false); // Stop loading in case of error
-        return;
-      }
-      
-      const formattedData = data.reduce((acc, item) => {
-        console.log(`"${item.group_value}"`);
-        acc[`ageRange${item.group_value.replace("-","_")}`] = item.count;
-        return acc;
-      }, {});
-      
-      setPatientData(formattedData);
-      setLoading(false); // Stop loading after data is set
-
-    } catch (err) {
-      console.error('Fetch error:', err);
-      setLoading(false); // Stop loading in case of error
-    }
+  const handleComparisonChange = (e) => {
+    setComparisonField(e.target.value);
   };
-  useEffect(() => {
-    if (comparisonField !== 'none' && fields.length > 0) {
-      fetchPatientComparison(comparisonField, fields);
-    } // Fetch data on component mount
-  }, [comparisonField,selectedRange,startDate,endDate]);
-  
+
   const isWeekdayComparison = comparisonField === "weekdayWeekend";
   const labels = isWeekdayComparison
-  ? ['Weekend', 'Weekday']:
-  Object.keys(patientData).map(label => 
-    label.replace('ageRange', '').replace('_', '-')
-  );
+    ? ['Weekend', 'Weekday']
+    : Object.keys(patientData).map(label =>
+      label.replace('ageRange', '').replace('_', '-')
+    );
 
   const total = Object.values(patientData).reduce((acc, count) => acc + count, 0);
 
   const weekendCount = isWeekdayComparison
-  ? Object.keys(patientData).reduce((acc, day) => {
+    ? Object.keys(patientData).reduce((acc, day) => {
       if (['ageRangeSaturday', 'ageRangeSunday'].includes(day.trim())) {
         return acc + patientData[day];
       }
       return acc;
     }, 0)
-  : 0;
-    console.log('weekendcount',weekendCount);
+    : 0;
+
   const weekdayCount = isWeekdayComparison
-  ? Object.keys(patientData).reduce((acc, day) => {
+    ? Object.keys(patientData).reduce((acc, day) => {
       if (!['ageRangeSaturday', 'ageRangeSunday'].includes(day.trim())) {
         return acc + patientData[day];
       }
       return acc;
     }, 0)
-  : 0;
+    : 0;
 
   const dataValues = isWeekdayComparison
-  ? [weekendCount, weekdayCount]
-  : Object.values(patientData);
- 
+    ? [weekendCount, weekdayCount]
+    : Object.values(patientData);
+
   const patientdata = {
-    
-    labels: labels, // Use age ranges as labels
+    labels: labels,
     datasets: [
       {
         label: showPercentage ? 'Percentage' : 'Number of Patients',
         data: showPercentage
-        ? dataValues.map(count => ((count / total) * 100).toFixed(2)) // Convert values to percentages if needed
-        : dataValues, // Use raw counts when not showing percentages
-        backgroundColor: [ '#4285F4'], // Adjust the colors if needed
+          ? dataValues.map(count => ((count / total) * 100).toFixed(2))
+          : dataValues,
+        backgroundColor: ['#4285F4'],
         borderRadius: 5,
         barThickness: 30,
       },
     ],
   };
-  console.log('bar',patientData);
+
   const options = {
-    indexAxis: 'x', // This makes the bar chart vertical
+    indexAxis: 'x',
     responsive: true,
     maintainAspectRatio: false,
     scales: {
@@ -400,15 +413,10 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           display: false,
         },
         ticks: {
-          color: '#ffffff', // X-axis label color
+          color: '#ffffff',
           beginAtZero: true,
           callback: function (value, index) {
-            const labels = isWeekdayComparison
-            ? ['Weekend', 'Weekday']:
-            Object.keys(patientData).map(label => 
-            label.replace('ageRange', '').replace('_', '-')
-              );
-            return showPercentage ? labels[index] : labels[index]; 
+            return labels[index];
           },
         },
       },
@@ -417,8 +425,8 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           display: false,
         },
         ticks: {
-          color: '#ffffff', // Y-axis label color
-          padding: 10, // Adds padding to avoid label cutoff
+          color: '#ffffff',
+          padding: 10,
         },
       },
     },
@@ -427,7 +435,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
         display: false,
       },
       tooltip: {
-        enabled: true, // Enable the default tooltip
+        enabled: true,
         callbacks: {
           label: function (tooltipItem) {
             return showPercentage
@@ -438,7 +446,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
       },
       datalabels: {
         display: true,
-        color: '#ffffff', // White color for the data labels
+        color: '#ffffff',
         anchor: 'end',
         align: 'top',
         offset: 0,
@@ -452,50 +460,50 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
   useEffect(() => {
     const fetchTrendData = async () => {
       try {
-        
         const selectedAgeRange = fields.find((ele) => ele.name === 'age');
         const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeStart : null;
         const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeEnd : null;
+
         const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
-      const distance_max= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
-      const distance_min= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
-        console.log('time range dates',min_age,max_age);
+        const distance_max = (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
+        const distance_min = (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
 
         const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
-      const duration_max= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
-      const duration_min= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
+        const duration_max = (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
+        const duration_min = (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
+
         const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
           p_group_by: 'time_range',
           p_secondary_group_by: 'time_range',
           p_start_date: startDate,
           p_end_date: endDate,
           p_gender: fields.find((ele) => ele.name === "gender")?.value === "all"
-          ? null 
-          : fields.find((ele) => ele.name === "gender")?.value ?? null,
+            ? null
+            : fields.find((ele) => ele.name === "gender")?.value ?? null,
           p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
-          ? null 
-          : fields.find((ele) => ele.name === 'location')?.value || null,
+            ? null
+            : fields.find((ele) => ele.name === 'location')?.value || null,
           p_min_age: min_age,
           p_max_age: max_age,
           p_discovery: fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
-          ? null 
-          : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
+            ? null
+            : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
           p_time_range: selectedRange,
           p_hospital_id: hospitalId,
           p_doctor_id: selectedDoctorId,
-          p_distance_min:distance_min,
-          p_distance_max:distance_max,
-          p_type:fields.find((ele) => ele.name === "appointment_type")?.value === "all"
-          ? null 
-          : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
-          p_duration_max:duration_max??null,
-          p_duration_min:duration_min??null,
-          p_day_of_week:fields.find((ele) => ele.name === "day_of_week")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
-        p_weekday:fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
-        ? null 
-        : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
+          p_distance_min: distance_min,
+          p_distance_max: distance_max,
+          p_type: fields.find((ele) => ele.name === "appointment_type")?.value === "all"
+            ? null
+            : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+          p_duration_max: duration_max,
+          p_duration_min: duration_min,
+          p_day_of_week: fields.find((ele) => ele.name === "day_of_week")?.value === "all"
+            ? null
+            : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
+          p_weekday: fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+            ? null
+            : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
         });
 
         if (error) {
@@ -503,27 +511,26 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           setLoading(false);
           return;
         }
-        console.log('time_range data',data);
-        // Format data for chart display
-        if (data && data.length > 0) {
-        const formattedLabels = data.map((item) => item.group_value);
-        const formattedCounts = data.map((item) => item.count);
 
-        setTrendData({
-          labels: formattedLabels,
-          datasets: [
-            {
-              label: 'Trend Over Time',
-              data: formattedCounts,
-              fill: false,
-              borderColor: '#4285F4',
-            },
-          ],
-        });
-      }else {
-        console.log("No data returned from database.");
-        setTrendData(null);
-      }
+        if (data && data.length > 0) {
+          const formattedLabels = data.map((item) => item.group_value);
+          const formattedCounts = data.map((item) => item.count);
+
+          setTrendData({
+            labels: formattedLabels,
+            datasets: [
+              {
+                label: 'Trend Over Time',
+                data: formattedCounts,
+                fill: false,
+                borderColor: '#4285F4',
+              },
+            ],
+          });
+        } else {
+          console.log("No data returned from database.");
+          setTrendData(null);
+        }
         setLoading(false);
       } catch (err) {
         console.error('Fetch error:', err);
@@ -541,23 +548,14 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
       y: { title: { display: true, text: 'Number of patients visited' } },
     },
   };
-    // Sample trends data (replace with actual data fetching logic)
-
-  const handleComparisonChange = (e) => {
-    setComparisonField(e.target.value);
-  };
-
 
   const availableOptions = filterOptions.filter(
-    (option) =>
-      !fields.some((field) => field.name === option.value) 
+    (option) => !fields.some((field) => field.name === option.value)
   );
 
   const availableComparisonOptions = filterOptions.filter(
-    (option) =>
-      !fields.some((field) => field.name === option.value) 
+    (option) => !fields.some((field) => field.name === option.value)
   );
-
 
   const renderFieldValue = (field) => {
     switch (field.name) {
@@ -633,7 +631,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
             )}
           </>
         );
-        case 'duration_travelled':
+      case 'duration_travelled':
         return (
           <>
             <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
@@ -672,7 +670,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           </Dropdown>
         );
       case 'appointment_type':
-        return ( 
+        return (
           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
             <option value="all">All</option>
             <option value="Walk-in">Walkin</option>
@@ -716,7 +714,7 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           <FieldContainer key={field.id}>
             <Dropdown
               value={field.name}
-              onChange={(e) => handleFieldChange(field.id, e.target.value, 'all')} // Update the name and reset the value
+              onChange={(e) => handleFieldChange(field.id, e.target.value, 'all')}
             >
               <option value="">Select Field</option>
               {filterOptions.map((option) => (
@@ -729,26 +727,27 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
             {renderFieldValue(field)}
 
             <Button onClick={() => removeField(field.id)}>Remove</Button>
-            
           </FieldContainer>
         ))}
-        <Button onClick={()=>searchResult(fields)}>Search</Button>
+        <Button onClick={() => searchResult(fields)}>Search</Button>
 
-        <h3>Fetched Data:</h3>
-        <pre>{JSON.stringify(data, null, 2)}</pre>
-
-        <TrendsContainer>
-  <h3>Trends Over Time</h3>
-  <ChartContainer>
-    {loading ? (
-      <p>Loading data...</p> // Display loading message
-    ) : trendData && trendData.labels ? (
-      <Line data={trendData} options={trendOptions} /> // Render the chart only if trendData has valid labels
-    ) : (
-      <p>No data available.</p> // Display message when no data is available
-    )}
-  </ChartContainer>
-</TrendsContainer>
+        {data !== null && (
+          <ResultContainer>
+            <h3>Total Patients: {data}</h3>
+          </ResultContainer>
+        )}
+                <TrendsContainer>
+          <h3>Trends Over Time</h3>
+          <ChartContainer>
+            {loading ? (
+              <p>Loading data...</p>
+            ) : trendData && trendData.labels ? (
+              <Line data={trendData} options={trendOptions} />
+            ) : (
+              <p>No data available.</p>
+            )}
+          </ChartContainer>
+        </TrendsContainer>
       </FieldsContainer>
 
       <ComparisonContainer>
@@ -762,30 +761,822 @@ const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedR
           ))}
         </Dropdown>
         {comparisonField !== 'none' && (
-            <WidgetContainer >
-              <WidgetTitle>
-              {comparisonField} vs count 
+          <WidgetContainer>
+            <WidgetTitle>
+              {comparisonField} vs count
               <div>
-            <Switch
-            onChange={() => setShowPercentage(!showPercentage)}
-            checked={showPercentage}
-            offColor="#888"
-            onColor="#4285F4" // Red color for toggle, matching Discovery Widget
-            uncheckedIcon={false}
-            checkedIcon={false}
-            height={20} /* Adjust the height of the toggle */
-            width={40} /* Adjust the width of the toggle */
-            />
-        </div>
-           </WidgetTitle>
-           <ChartContainer>
-            <Bar data={patientdata} options={options}/>
-          </ChartContainer>
+                <Switch
+                  onChange={() => setShowPercentage(!showPercentage)}
+                  checked={showPercentage}
+                  offColor="#888"
+                  onColor="#4285F4"
+                  uncheckedIcon={false}
+                  checkedIcon={false}
+                  height={20}
+                  width={40}
+                />
+              </div>
+            </WidgetTitle>
+            <ChartContainer>
+              <Bar data={patientdata} options={options} />
+            </ChartContainer>
           </WidgetContainer>
-      )}
+        )}
       </ComparisonContainer>
     </Container>
   );
 };
 
 export default CustomFields;
+
+
+// import React, { useState, useEffect } from 'react';
+// import { Line,Bar } from 'react-chartjs-2';
+// import styled from 'styled-components';
+// import { supabase } from '../../supabaseClient';
+// import Switch from 'react-switch';
+// import dayjs from 'dayjs';
+// import { Chart as ChartJS, BarElement, CategoryScale, LinearScale, Title, Tooltip, Legend } from 'chart.js';
+// // Register components
+// ChartJS.register(BarElement, CategoryScale, LinearScale, Title, Tooltip, Legend);
+// // Define filter options
+// const filterOptions = [
+//   { label: 'Location', value: 'location' },
+//   { label: 'Age', value: 'age' },
+//   { label: 'Gender', value: 'gender' },
+//   { label: 'Distance Traveled', value: 'distance_travelled' },
+//   { label: 'Duration Taken', value: 'duration_travelled' },
+//   { label: 'Discovery Channel', value: 'discoveryChannel' },
+//   { label: 'Day of the Week', value: 'day_of_week' },
+//   { label: 'Weekday/Weekend', value: 'weekdayWeekend' },
+//   { label: 'appointment_type (Walkin/Appointment/Emergency)', value: 'appointment_type' },
+// ];
+
+// // Styled components
+
+// const WidgetContainer = styled.div`
+//   background-color: #2c2f33;
+//   padding: 20px;
+//   border-radius: 15px;
+//   color: #fff;
+//   width: 300px; 
+//   height: auto; 
+//   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+//   display: flex;
+//   flex-direction: column;
+//   justify-content: space-between;
+//   margin-top: 20px
+// `;
+
+// const WidgetTitle = styled.h3`
+//   font-size: 18px;
+//   margin-bottom: 10px;
+//   display: flex;
+//   justify-content: space-between;
+//   align-items: center;
+// `;
+// const ChartContainer = styled.div`
+//   flex-grow: 1;
+//   width: 100%;
+//   height: 100%; /* Make the chart take up the full height */
+// `;
+
+// const Container = styled.div`
+//   margin-top: 20px;
+//   color: #ffffff;
+//   display: flex;
+//   justify-content: space-between;
+// `;
+// const FieldsContainer = styled.div`
+//   flex: 1;
+// `;
+
+// const FieldContainer = styled.div`
+//   display: flex;
+//   align-items: center;
+//   margin-bottom: 10px;
+//   gap: 10px;
+// `;
+
+// const Dropdown = styled.select`
+//   padding: 5px;
+//   background-color: #333333;
+//   color: #ffffff;
+//   border: 1px solid #444444;
+//   border-radius: 5px;
+// `;
+
+// const Input = styled.input`
+//   padding: 5px;
+//   background-color: #333333;
+//   color: #ffffff;
+//   border: 1px solid #444444;
+//   border-radius: 5px;
+// `;
+
+// const Button = styled.button`
+//   padding: 5px 10px;
+//   background-color: #007bff;
+//   color: #ffffff;
+//   border: none;
+//   border-radius: 5px;
+//   cursor: pointer;
+
+//   &:hover {
+//     background-color: #0056b3;
+//   }
+
+//   &:disabled {
+//     background-color: #555555;
+//     cursor: not-allowed;
+//   }
+// `;
+
+// const ComparisonContainer = styled.div`
+//   flex: 0.3;
+//   display: flex;
+//   flex-direction: column;
+//   justify-content: flex-start;
+//   align-items: center;
+// `;
+// const TrendsContainer = styled.div`
+//   margin-top: 10px; // Reduced top margin
+//   padding: 10px; // Reduced padding
+//   background-color: #333;
+//   border: 1px solid #444;
+//   border-radius: 8px; // Slightly smaller border radius
+//   box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.2); // Slightly reduced shadow
+//   max-width: 60%; // Reduce width if needed for compact appearance
+// `;
+
+
+
+// // Define your CustomFields component
+// const CustomFields = ({ hospitalId,selectedDoctorId, selectedRange, setSelectedRange,startDate, endDate,width,height }) => {
+  
+//   const [fields, setFields] = useState([]);
+//   const [comparisonField, setComparisonField] = useState('none');
+//   const [data, setData] = useState([]); // Data fetched from Supabase
+//   const [locations, setLocations] = useState(['All']); // State for unique locations
+//   const [showPercentage, setShowPercentage] = useState(true);
+//   const [patientData, setPatientData] = useState([
+//   ]);
+//   const [loading, setLoading] = useState(true);
+//   const [trendData, setTrendData] = useState(null);
+//   // Function to fetch unique locations from the database
+//   const fetchUniqueLocations = async () => {
+//     const { data:locationsData, error } = await supabase.rpc('get_distinct_main_area', {        
+//       hospital_id_input:hospitalId, 
+//     });
+    
+//  // Ensure distinct values
+//     console.log('selected range',selectedRange);
+//     if (error) {
+//       console.error('Error fetching locations:', error);
+//       return;
+//     }    
+//     const uniqueLocations = locationsData.map((item) => item.main_area);
+    
+//     setLocations(['All', ...uniqueLocations]);
+//   };
+
+//   // Fetch unique locations on component mount
+//   useEffect(() => {
+//     fetchUniqueLocations();
+//   }, []);
+
+
+//   const addField = () => {
+//     setFields([...fields, { id: fields.length, name: '', value: '', rangeStart: '', rangeEnd: '' }]);
+//     console.log('The set fields are',fields);
+//   };
+
+//   const removeField = (id) => {
+//     setFields(fields.filter((field) => field.id !== id));
+//     console.log('The removed  fields are',fields);
+//   };
+
+//   const searchResult = async (selectedFields)  => {
+    
+//     try {
+//       console.log('hospitalid',hospitalId);
+//       console.log('search function called with value:', selectedFields);
+      
+//       console.log(selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value||null);
+//       //age_max - for between rangeend and for above rangeend
+//       const selectedAgeRange = selectedFields.find((ele) => ele.name === 'age');
+//       const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') 
+//       ? selectedAgeRange?.rangeEnd 
+//       : (selectedAgeRange?.value === 'all' ? null : null);
+//       const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') 
+//       ? selectedAgeRange?.rangeStart 
+//       : (selectedAgeRange?.value === 'all' ? null : null);
+//       const selectedDistanceRange = selectedFields.find((ele) => ele.name === 'distance_travelled');
+//       console.log(selectedDistanceRange);
+//       const distance_max=(selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') 
+//       ? selectedDistanceRange?.rangeEnd: (selectedDistanceRange?.value === 'all' ? null : null);
+//       const distance_min=(selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above')? selectedDistanceRange?.rangeStart 
+//       : (selectedDistanceRange?.value === 'all' ? null : null);
+//       console.log('distance max and distance min',distance_max,distance_min);
+//       const selectedDurationRange = selectedFields.find((ele) => ele.name === 'duration_travelled');
+//       const duration_max=(selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') 
+//       ? selectedDurationRange?.rangeEnd: (selectedDurationRange?.value === 'all' ? null : null);
+//       const duration_min=(selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above')? selectedDurationRange?.rangeStart 
+//       : (selectedDurationRange?.value === 'all' ? null : null);
+//       console.log('day of week',selectedFields.find((ele) => ele.name === "day_of_week")?.value ?? null);
+      
+//       const { data, error } = await supabase.rpc('dynamic_patient_count', {        
+//         p_location: selectedFields.find((ele) => ele.name === 'location')?.value === "all"
+//         ? null 
+//         : selectedFields.find((ele) => ele.name === 'location')?.value || null,
+//         p_hospital_id:hospitalId, 
+//         p_discovery_channel: selectedFields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
+//         ? null 
+//         : selectedFields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
+//         p_age_min: min_age ?? null,
+//         p_age_max:max_age ?? null,
+//         p_doctor_id:selectedDoctorId,
+//         p_day_of_week:selectedFields.find((ele) => ele.name === "day_of_week")?.value === "all"
+//         ? null 
+//         : selectedFields.find((ele) => ele.name === "day_of_week")?.value || null,
+//         p_start_date:startDate,
+//         p_end_date:endDate,
+//         p_gender:selectedFields.find((ele) => ele.name === "gender")?.value === "all"
+//         ? null 
+//         : selectedFields.find((ele) => ele.name === "gender")?.value ?? null,
+//         p_type: selectedFields.find((ele) => ele.name === "appointment_type")?.value === "all"
+//         ? null 
+//         : selectedFields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+//         p_time_range:selectedRange,
+//         p_weekday:selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value === "all" 
+//         ? null 
+//         : selectedFields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null,
+//         p_distance_min: distance_min ?? null ,
+//         p_distance_max:distance_max?? null,
+//         p_duration_min:duration_min??null,
+//         p_duration_max:duration_max??null
+//       });
+  
+//       if (error) {
+//         console.error('Error calling dynamic_patient_count:', error);
+//         setData([]); // Clear data if error occurs
+//         return;
+//       }
+//       console.log('day of weeks',data);
+//       setData(data);
+//     } catch (err) {
+//       console.error('Error fetching filtered data:', err);
+//     }
+//   }
+
+//   const handleFieldChange = (id, name, value) => {
+   
+//     const newFields = fields.map((field) => {
+
+//       if (field.id === id) {
+//         return { ...field, name: name || field.name, value: value ?? field.value };
+//       }
+//       return field;
+//     });
+//     setFields(newFields);
+//     console.log(`dropdown name :${name} and value : ${value}`);
+//     console.log('fields values Changed:', fields);
+//   };
+
+//   const handleInputChange = (id, key, value) => {
+//     const newFields = fields.map((field) => {
+//       if (field.id === id) {
+//         return { ...field, [key]: value };
+//       }
+//       return field;
+//     });
+//     setFields(newFields);
+//   };
+
+//   const fetchPatientComparison = async () => {
+//     setLoading(true); // Start loading
+
+//     setPatientData([]);
+   
+//     try {
+//       // Replace 'hospital_id' and '1_month' with your actual parameters
+      
+//       console.log('hr',comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField === "weekdayWeekend" ? 'day_of_week' :comparisonField);
+//       const selectedAgeRange = fields.find((ele) => ele.name === 'age');
+//       const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeEnd : null;
+//       const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeStart : null;
+//       const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
+//       const distance_max= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
+//       const distance_min= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
+
+//       const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
+//       const duration_max= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
+//       const duration_min= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
+//       console.log('durations',duration_max,duration_min);
+//       const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
+//         p_group_by:comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField === "weekdayWeekend" ? 'day_of_week' :comparisonField,
+//         p_secondary_group_by:comparisonField == "discoveryChannel" ? 'how_did_you_get_to_know_us': comparisonField === "location" ? 'main_area' : comparisonField=== "weekdayWeekend" ? 'day_of_week' :comparisonField,//fields.find((item) => item.name === 'location') ? "main_area" : null,
+//         p_start_date: startDate, // Use actual UUID
+//         p_end_date: endDate,
+//         p_gender:fields.find((ele) => ele.name === "gender")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "gender")?.value ?? null,
+//         p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === 'location')?.value || null,
+//         p_min_age:min_age,
+//         p_max_age:max_age,
+//         p_discovery:fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
+//         p_time_range:selectedRange,
+//         p_hospital_id :hospitalId,
+//         p_doctor_id:selectedDoctorId,
+//         p_distance_min:distance_min,
+//         p_distance_max:distance_max,
+//         p_type:fields.find((ele) => ele.name === "appointment_type")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+//         p_duration_max:duration_max,
+//         p_duration_min:duration_min,
+//         p_day_of_week:fields.find((ele) => ele.name === "day_of_week")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
+//         p_weekday:fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
+//       });
+
+//       console.log('locations',data);
+//       if (error) {
+//         console.error('Error fetching patient growth stats:', error.message);
+//         setLoading(false); // Stop loading in case of error
+//         return;
+//       }
+      
+//       const formattedData = data.reduce((acc, item) => {
+//         console.log(`"${item.group_value}"`);
+//         acc[`ageRange${item.group_value.replace("-","_")}`] = item.count;
+//         return acc;
+//       }, {});
+      
+//       setPatientData(formattedData);
+//       setLoading(false); // Stop loading after data is set
+
+//     } catch (err) {
+//       console.error('Fetch error:', err);
+//       setLoading(false); // Stop loading in case of error
+//     }
+//   };
+//   useEffect(() => {
+//     if (comparisonField !== 'none' && fields.length > 0) {
+//       fetchPatientComparison(comparisonField, fields);
+//     } // Fetch data on component mount
+//   }, [comparisonField,selectedRange,startDate,endDate]);
+  
+//   const isWeekdayComparison = comparisonField === "weekdayWeekend";
+//   const labels = isWeekdayComparison
+//   ? ['Weekend', 'Weekday']:
+//   Object.keys(patientData).map(label => 
+//     label.replace('ageRange', '').replace('_', '-')
+//   );
+
+//   const total = Object.values(patientData).reduce((acc, count) => acc + count, 0);
+
+//   const weekendCount = isWeekdayComparison
+//   ? Object.keys(patientData).reduce((acc, day) => {
+//       if (['ageRangeSaturday', 'ageRangeSunday'].includes(day.trim())) {
+//         return acc + patientData[day];
+//       }
+//       return acc;
+//     }, 0)
+//   : 0;
+//     console.log('weekendcount',weekendCount);
+//   const weekdayCount = isWeekdayComparison
+//   ? Object.keys(patientData).reduce((acc, day) => {
+//       if (!['ageRangeSaturday', 'ageRangeSunday'].includes(day.trim())) {
+//         return acc + patientData[day];
+//       }
+//       return acc;
+//     }, 0)
+//   : 0;
+
+//   const dataValues = isWeekdayComparison
+//   ? [weekendCount, weekdayCount]
+//   : Object.values(patientData);
+ 
+//   const patientdata = {
+    
+//     labels: labels, // Use age ranges as labels
+//     datasets: [
+//       {
+//         label: showPercentage ? 'Percentage' : 'Number of Patients',
+//         data: showPercentage
+//         ? dataValues.map(count => ((count / total) * 100).toFixed(2)) // Convert values to percentages if needed
+//         : dataValues, // Use raw counts when not showing percentages
+//         backgroundColor: [ '#4285F4'], // Adjust the colors if needed
+//         borderRadius: 5,
+//         barThickness: 30,
+//       },
+//     ],
+//   };
+//   console.log('bar',patientData);
+//   const options = {
+//     indexAxis: 'x', // This makes the bar chart vertical
+//     responsive: true,
+//     maintainAspectRatio: false,
+//     scales: {
+//       x: {
+//         grid: {
+//           display: false,
+//         },
+//         ticks: {
+//           color: '#ffffff', // X-axis label color
+//           beginAtZero: true,
+//           callback: function (value, index) {
+//             const labels = isWeekdayComparison
+//             ? ['Weekend', 'Weekday']:
+//             Object.keys(patientData).map(label => 
+//             label.replace('ageRange', '').replace('_', '-')
+//               );
+//             return showPercentage ? labels[index] : labels[index]; 
+//           },
+//         },
+//       },
+//       y: {
+//         grid: {
+//           display: false,
+//         },
+//         ticks: {
+//           color: '#ffffff', // Y-axis label color
+//           padding: 10, // Adds padding to avoid label cutoff
+//         },
+//       },
+//     },
+//     plugins: {
+//       legend: {
+//         display: false,
+//       },
+//       tooltip: {
+//         enabled: true, // Enable the default tooltip
+//         callbacks: {
+//           label: function (tooltipItem) {
+//             return showPercentage
+//               ? `${tooltipItem.raw}%`
+//               : tooltipItem.raw;
+//           },
+//         },
+//       },
+//       datalabels: {
+//         display: true,
+//         color: '#ffffff', // White color for the data labels
+//         anchor: 'end',
+//         align: 'top',
+//         offset: 0,
+//         formatter: (value) => {
+//           return showPercentage ? `${value}%` : value;
+//         },
+//       },
+//     },
+//   };
+
+//   useEffect(() => {
+//     const fetchTrendData = async () => {
+//       try {
+        
+//         const selectedAgeRange = fields.find((ele) => ele.name === 'age');
+//         const min_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'above') ? selectedAgeRange?.rangeStart : null;
+//         const max_age = (selectedAgeRange?.value === 'between' || selectedAgeRange?.value === 'below') ? selectedAgeRange?.rangeEnd : null;
+//         const selectedDistanceRange = fields.find((ele) => ele.name === 'distance_travelled');
+//       const distance_max= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'above') ? selectedDistanceRange?.rangeEnd : null;
+//       const distance_min= (selectedDistanceRange?.value === 'between' || selectedDistanceRange?.value === 'below') ? selectedDistanceRange?.rangeStart : null;
+//         console.log('time range dates',min_age,max_age);
+
+//         const selectedDurationRange = fields.find((ele) => ele.name === 'duration_travelled');
+//       const duration_max= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'above') ? selectedDurationRange?.rangeEnd : null;
+//       const duration_min= (selectedDurationRange?.value === 'between' || selectedDurationRange?.value === 'below') ? selectedDurationRange?.rangeStart : null;
+//         const { data, error } = await supabase.rpc('patient_discovery_count_dynamic', {
+//           p_group_by: 'time_range',
+//           p_secondary_group_by: 'time_range',
+//           p_start_date: startDate,
+//           p_end_date: endDate,
+//           p_gender: fields.find((ele) => ele.name === "gender")?.value === "all"
+//           ? null 
+//           : fields.find((ele) => ele.name === "gender")?.value ?? null,
+//           p_address: fields.find((ele) => ele.name === 'location')?.value === "all"
+//           ? null 
+//           : fields.find((ele) => ele.name === 'location')?.value || null,
+//           p_min_age: min_age,
+//           p_max_age: max_age,
+//           p_discovery: fields.find((ele) => ele.name === "discoveryChannel")?.value === "all"
+//           ? null 
+//           : fields.find((ele) => ele.name === "discoveryChannel")?.value ?? null,
+//           p_time_range: selectedRange,
+//           p_hospital_id: hospitalId,
+//           p_doctor_id: selectedDoctorId,
+//           p_distance_min:distance_min,
+//           p_distance_max:distance_max,
+//           p_type:fields.find((ele) => ele.name === "appointment_type")?.value === "all"
+//           ? null 
+//           : fields.find((ele) => ele.name === "appointment_type")?.value ?? null,
+//           p_duration_max:duration_max??null,
+//           p_duration_min:duration_min??null,
+//           p_day_of_week:fields.find((ele) => ele.name === "day_of_week")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "day_of_week")?.value ?? null,
+//         p_weekday:fields.find((ele) => ele.name === "weekdayWeekend")?.value === "all"
+//         ? null 
+//         : fields.find((ele) => ele.name === "weekdayWeekend")?.value ?? null
+//         });
+
+//         if (error) {
+//           console.error('Error fetching data:', error.message);
+//           setLoading(false);
+//           return;
+//         }
+//         console.log('time_range data',data);
+//         // Format data for chart display
+//         if (data && data.length > 0) {
+//         const formattedLabels = data.map((item) => item.group_value);
+//         const formattedCounts = data.map((item) => item.count);
+
+//         setTrendData({
+//           labels: formattedLabels,
+//           datasets: [
+//             {
+//               label: 'Trend Over Time',
+//               data: formattedCounts,
+//               fill: false,
+//               borderColor: '#4285F4',
+//             },
+//           ],
+//         });
+//       }else {
+//         console.log("No data returned from database.");
+//         setTrendData(null);
+//       }
+//         setLoading(false);
+//       } catch (err) {
+//         console.error('Fetch error:', err);
+//         setLoading(false);
+//       }
+//     };
+
+//     fetchTrendData();
+//   }, [startDate, endDate, selectedRange, hospitalId, selectedDoctorId, fields]);
+
+//   const trendOptions = {
+//     responsive: true,
+//     scales: {
+//       x: { title: { display: true, text: 'Time Period' } },
+//       y: { title: { display: true, text: 'Number of patients visited' } },
+//     },
+//   };
+//     // Sample trends data (replace with actual data fetching logic)
+
+//   const handleComparisonChange = (e) => {
+//     setComparisonField(e.target.value);
+//   };
+
+
+//   const availableOptions = filterOptions.filter(
+//     (option) =>
+//       !fields.some((field) => field.name === option.value) 
+//   );
+
+//   const availableComparisonOptions = filterOptions.filter(
+//     (option) =>
+//       !fields.some((field) => field.name === option.value) 
+//   );
+
+
+//   const renderFieldValue = (field) => {
+//     switch (field.name) {
+//       case 'location':
+//         return (
+//           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//             {locations.map((location) => (
+//               <option key={location} value={location}>
+//                 {location}
+//               </option>
+//             ))}
+//           </Dropdown>
+//         );
+//       case 'age':
+//         return (
+//           <>
+//             <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//               <option value="all">All</option>
+//               <option value="between">Between</option>
+//               <option value="below">Below</option>
+//               <option value="above">Above</option>
+//             </Dropdown>
+//             {(field.value === 'between' || field.value === 'below' || field.value === 'above') && (
+//               <Input
+//                 type="number"
+//                 placeholder="Enter age"
+//                 value={field.rangeStart || ''}
+//                 onChange={(e) => handleInputChange(field.id, 'rangeStart', e.target.value)}
+//               />
+//             )}
+//             {(field.value === 'between') && (
+//               <Input
+//                 type="number"
+//                 placeholder="End age"
+//                 value={field.rangeEnd || ''}
+//                 onChange={(e) => handleInputChange(field.id, 'rangeEnd', e.target.value)}
+//               />
+//             )}
+//           </>
+//         );
+//       case 'gender':
+//         return (
+//           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//             <option value="all">All</option>
+//             <option value="Male">Male</option>
+//             <option value="Female">Female</option>
+//           </Dropdown>
+//         );
+//       case 'distance_travelled':
+//         return (
+//           <>
+//             <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//               <option value="all">All</option>
+//               <option value="between">Between</option>
+//               <option value="below">Below</option>
+//               <option value="above">Above</option>
+//             </Dropdown>
+//             {(field.value === 'between' || field.value === 'below' || field.value === 'above') && (
+//               <Input
+//                 type="number"
+//                 placeholder="Enter distance"
+//                 value={field.rangeStart || ''}
+//                 onChange={(e) => handleInputChange(field.id, 'rangeStart', e.target.value)}
+//               />
+//             )}
+//             {field.value === 'between' && (
+//               <Input
+//                 type="number"
+//                 placeholder="End distance"
+//                 value={field.rangeEnd || ''}
+//                 onChange={(e) => handleInputChange(field.id, 'rangeEnd', e.target.value)}
+//               />
+//             )}
+//           </>
+//         );
+//         case 'duration_travelled':
+//         return (
+//           <>
+//             <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//               <option value="all">All</option>
+//               <option value="between">Between</option>
+//               <option value="below">Below</option>
+//               <option value="above">Above</option>
+//             </Dropdown>
+//             {(field.value === 'between' || field.value === 'below' || field.value === 'above') && (
+//               <Input
+//                 type="number"
+//                 placeholder="Start duration"
+//                 value={field.rangeStart || ''}
+//                 onChange={(e) => handleInputChange(field.id, 'rangeStart', e.target.value)}
+//               />
+//             )}
+//             {field.value === 'between' && (
+//               <Input
+//                 type="number"
+//                 placeholder="End duration"
+//                 value={field.rangeEnd || ''}
+//                 onChange={(e) => handleInputChange(field.id, 'rangeEnd', e.target.value)}
+//               />
+//             )}
+//           </>
+//         );
+//       case 'discoveryChannel':
+//         return (
+//           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//             <option value="all">All</option>
+//             <option value="Friends and Family">Friends and Family</option>
+//             <option value="Google">Google</option>
+//             <option value="Instagram">Instagram</option>
+//             <option value="Facebook">Facebook</option>
+//             <option value="others">Others</option>
+//           </Dropdown>
+//         );
+//       case 'appointment_type':
+//         return ( 
+//           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//             <option value="all">All</option>
+//             <option value="Walk-in">Walkin</option>
+//             <option value="Booking">Booking</option>
+//             <option value="Emergency">Emergency</option>
+//           </Dropdown>
+//         );
+//       case 'weekdayWeekend':
+//         return (
+//           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//             <option value="all">All</option>
+//             <option value="weekday">Weekday</option>
+//             <option value="weekend">Weekend</option>
+//           </Dropdown>
+//         );
+//       case 'day_of_week':
+//         return (
+//           <Dropdown value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)}>
+//             <option value="all">All</option>
+//             <option value="Monday">Monday</option>
+//             <option value="Tuesday">Tuesday</option>
+//             <option value="Wednesday">Wednesday</option>
+//             <option value="Thursday">Thursday</option>
+//             <option value="Friday">Friday</option>
+//             <option value="Saturday">Saturday</option>
+//             <option value="Sunday">Sunday</option>
+//           </Dropdown>
+//         );
+//       default:
+//         return <Input type="text" value={field.value} onChange={(e) => handleFieldChange(field.id, field.name, e.target.value)} />;
+//     }
+//   };
+
+//   return (
+//     <Container>
+//       <FieldsContainer>
+//         <Button onClick={addField} disabled={availableOptions.length === 0}>
+//           Add Field
+//         </Button>
+//         {fields.map((field) => (
+//           <FieldContainer key={field.id}>
+//             <Dropdown
+//               value={field.name}
+//               onChange={(e) => handleFieldChange(field.id, e.target.value, 'all')} // Update the name and reset the value
+//             >
+//               <option value="">Select Field</option>
+//               {filterOptions.map((option) => (
+//                 <option key={option.value} value={option.value}>
+//                   {option.label}
+//                 </option>
+//               ))}
+//             </Dropdown>
+
+//             {renderFieldValue(field)}
+
+//             <Button onClick={() => removeField(field.id)}>Remove</Button>
+            
+//           </FieldContainer>
+//         ))}
+//         <Button onClick={()=>searchResult(fields)}>Search</Button>
+
+//         <h3>Fetched Data:</h3>
+//         <pre>{JSON.stringify(data, null, 2)}</pre>
+
+//         <TrendsContainer>
+//   <h3>Trends Over Time</h3>
+//   <ChartContainer>
+//     {loading ? (
+//       <p>Loading data...</p> // Display loading message
+//     ) : trendData && trendData.labels ? (
+//       <Line data={trendData} options={trendOptions} /> // Render the chart only if trendData has valid labels
+//     ) : (
+//       <p>No data available.</p> // Display message when no data is available
+//     )}
+//   </ChartContainer>
+// </TrendsContainer>
+//       </FieldsContainer>
+
+//       <ComparisonContainer>
+//         <h3>Comparison</h3>
+//         <Dropdown value={comparisonField} onChange={handleComparisonChange}>
+//           <option value="none">None</option>
+//           {availableComparisonOptions.map((option) => (
+//             <option key={option.value} value={option.value}>
+//               {option.label}
+//             </option>
+//           ))}
+//         </Dropdown>
+//         {comparisonField !== 'none' && (
+//             <WidgetContainer >
+//               <WidgetTitle>
+//               {comparisonField} vs count 
+//               <div>
+//             <Switch
+//             onChange={() => setShowPercentage(!showPercentage)}
+//             checked={showPercentage}
+//             offColor="#888"
+//             onColor="#4285F4" // Red color for toggle, matching Discovery Widget
+//             uncheckedIcon={false}
+//             checkedIcon={false}
+//             height={20} /* Adjust the height of the toggle */
+//             width={40} /* Adjust the width of the toggle */
+//             />
+//         </div>
+//            </WidgetTitle>
+//            <ChartContainer>
+//             <Bar data={patientdata} options={options}/>
+//           </ChartContainer>
+//           </WidgetContainer>
+//       )}
+//       </ComparisonContainer>
+//     </Container>
+//   );
+// };
+
+// export default CustomFields;

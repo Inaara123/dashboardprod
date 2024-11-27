@@ -908,7 +908,7 @@ return (
   </div>
   {/* Eigth Row - Correlations Section */}
   {/* GendervsBooking Board */}
-  <div style={{ 
+  {/* <div style={{ 
     gridColumn: 'span 6',
     backgroundColor: '#131517',
     borderRadius: '12px',
@@ -922,7 +922,7 @@ return (
       startDate={startDate}
       endDate={endDate}
     />
-  </div>
+  </div> */}
   <div style={{ 
     gridColumn: 'span 6',
     backgroundColor: '#131517',

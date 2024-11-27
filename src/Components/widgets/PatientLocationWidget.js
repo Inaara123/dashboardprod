@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Circle, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../../supabaseClient';
@@ -76,38 +76,58 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
     ));
   }, [patientLocations]);
 
-  const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
-    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
     
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }, []);
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+  };
 
-  const getTimeRangeDate = useCallback(() => {
+  const getTimeRanges = () => {
     const now = new Date();
-    if (timeRange === 'custom' && startDate && endDate) {
-      return { startDateTime: new Date(startDate), endDateTime: new Date(endDate) };
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    let currentStart, currentEnd;
+    
+    switch (timeRange) {
+      case '1day':
+        currentStart = today;
+        currentEnd = now;
+        break;
+      case '1week':
+        currentStart = new Date(today);
+        currentStart.setDate(currentStart.getDate() - 7);
+        currentEnd = now;
+        break;
+      case '1month':
+        currentStart = new Date(today);
+        currentStart.setMonth(currentStart.getMonth() - 1);
+        currentEnd = now;
+        break;
+      case '3months':
+        currentStart = new Date(today);
+        currentStart.setMonth(currentStart.getMonth() - 3);
+        currentEnd = now;
+        break;
+      case 'custom':
+        currentStart = new Date(startDate);
+        currentEnd = new Date(endDate);
+        break;
+      default:
+        currentStart = today;
+        currentEnd = now;
     }
-
-    const timeRanges = {
-      '1day': now.setDate(now.getDate() - 1),
-      '1week': now.setDate(now.getDate() - 7),
-      '1month': now.setMonth(now.getMonth() - 1),
-      '3months': now.setMonth(now.getMonth() - 3),
-    };
-
+    
     return {
-      startDateTime: new Date(timeRanges[timeRange] || timeRanges['1day']),
-      endDateTime: new Date()
+      startDateTime: currentStart,
+      endDateTime: currentEnd
     };
-  }, [timeRange, startDate, endDate]);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -124,10 +144,13 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
           .eq('hospital_id', hospitalId)
           .single();
 
-        if (hospitalError) throw hospitalError;
+        if (hospitalError) {
+          console.error('Hospital fetch error:', hospitalError);
+          throw new Error(`Failed to fetch hospital data: ${hospitalError.message}`);
+        }
+        
         if (!isMounted) return;
 
-        // Validate hospital coordinates
         if (!hospital?.location?.coordinates?.length === 2) {
           throw new Error('Invalid hospital coordinates');
         }
@@ -135,66 +158,78 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
         setHospitalData(hospital);
 
         // Get time range
-        const { startDateTime, endDateTime } = getTimeRangeDate();
+        const { startDateTime, endDateTime } = getTimeRanges();
+        console.log('Time range:', { startDateTime, endDateTime });
 
-        // Build appointments query
-        const appointmentsQuery = supabase
+        // Build query for appointments with patient data
+        let query = supabase
           .from('appointments')
-          .select('patient_id')
+          .select(`
+            appointment_time,
+            patient_id,
+            patients (
+              latitude,
+              longitude,
+              distance_travelled
+            )
+          `)
           .eq('hospital_id', hospitalId)
-          .gte('appointment_time', startDateTime.toISOString())
-          .lte('appointment_time', endDateTime.toISOString());
+          .gte('appointment_time', formatDate(startDateTime))
+          .lte('appointment_time', formatDate(endDateTime));
 
+        // Add doctor filter if specified
         if (doctorId !== 'all') {
-          appointmentsQuery.eq('doctor_id', doctorId);
+          query = query.eq('doctor_id', doctorId);
         }
 
-        const { data: appointments, error: appointmentsError } = await appointmentsQuery;
-        if (appointmentsError) throw appointmentsError;
-        if (!isMounted) return;
+        const { data: patientData, error: patientError } = await query;
 
-        // Fetch patient locations
-        const patientIds = appointments.map(app => app.patient_id);
-        const { data: patients, error: patientsError } = await supabase
-          .from('patients')
-          .select('latitude, longitude')
-          .in('patient_id', patientIds);
+        if (patientError) {
+          console.error('Patient data fetch error:', patientError);
+          throw new Error(`Failed to fetch patient data: ${patientError.message}`);
+        }
 
-        if (patientsError) throw patientsError;
+        console.log('Patient data received:', patientData);
+
         if (!isMounted) return;
 
         // Calculate statistics
-        const [hospitalLon, hospitalLat] = hospital.location.coordinates;
-        
         const stats = {
           lessThan1km: 0,
           oneToTwoKm: 0,
           twoToFiveKm: 0,
           moreThanFiveKm: 0,
           nanValues: 0,
-          total: patients.length,
+          total: patientData.length,
         };
 
-        const validPatients = patients.filter(patient => {
-          const distance = calculateDistance(
-            hospitalLat,
-            hospitalLon,
-            patient.latitude,
-            patient.longitude
-          );
+        const validPatients = patientData
+          .filter(appointment => {
+            if (!appointment.patients) {
+              console.warn('No patient data for appointment:', appointment);
+              stats.nanValues++;
+              return false;
+            }
 
-          if (distance === null) {
-            stats.nanValues++;
-            return false;
-          }
+            const distance = appointment.patients.distance_travelled;
 
-          if (distance < 1) stats.lessThan1km++;
-          else if (distance < 2) stats.oneToTwoKm++;
-          else if (distance < 5) stats.twoToFiveKm++;
-          else stats.moreThanFiveKm++;
+            if (distance === null || distance === undefined || isNaN(distance)) {
+              console.warn('Invalid distance for patient:', appointment.patient_id);
+              stats.nanValues++;
+              return false;
+            }
 
-          return true;
-        });
+            if (distance < 1) stats.lessThan1km++;
+            else if (distance < 2) stats.oneToTwoKm++;
+            else if (distance < 5) stats.twoToFiveKm++;
+            else stats.moreThanFiveKm++;
+
+            return true;
+          })
+          .map(appointment => ({
+            latitude: appointment.patients.latitude,
+            longitude: appointment.patients.longitude
+          }));
 
         if (!isMounted) return;
         
@@ -203,8 +238,9 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
         
       } catch (err) {
         if (isMounted) {
-          setError(err.message);
-          console.error('Error fetching data:', err);
+          const errorMessage = err.message || 'Unknown error occurred';
+          console.error('Detailed error:', err);
+          setError(errorMessage);
         }
       } finally {
         if (isMounted) {
@@ -213,12 +249,14 @@ const PatientLocationWidget = ({ hospitalId, doctorId, timeRange, startDate, end
       }
     };
 
-    fetchData();
+    if (hospitalId && doctorId && (timeRange !== 'custom' || (startDate && endDate))) {
+      fetchData();
+    }
 
     return () => {
       isMounted = false;
     };
-  }, [hospitalId, doctorId, timeRange, startDate, endDate, calculateDistance, getTimeRangeDate]);
+  }, [hospitalId, doctorId, timeRange, startDate, endDate]);
 
   if (loading) {
     return <div className="loading-spinner">Loading map data...</div>;

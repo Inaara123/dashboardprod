@@ -102,54 +102,6 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const getTimeRanges = () => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    let currentStart, currentEnd, previousStart, previousEnd;
-
-    switch (timeRange) {
-      case '1day':
-        currentStart = today;
-        currentEnd = now;
-        previousStart = new Date(today.setDate(today.getDate() - 1));
-        previousEnd = today;
-        break;
-      case '1week':
-        currentStart = new Date(today.setDate(today.getDate() - 7));
-        currentEnd = now;
-        previousStart = new Date(currentStart.setDate(currentStart.getDate() - 7));
-        previousEnd = currentStart;
-        break;
-      case '1month':
-        currentStart = new Date(today.setMonth(today.getMonth() - 1));
-        currentEnd = now;
-        previousStart = new Date(currentStart.setMonth(currentStart.getMonth() - 1));
-        previousEnd = currentStart;
-        break;
-      case '3months':
-        currentStart = new Date(today.setMonth(today.getMonth() - 3));
-        currentEnd = now;
-        previousStart = new Date(currentStart.setMonth(currentStart.getMonth() - 3));
-        previousEnd = currentStart;
-        break;
-      case 'custom':
-        currentStart = new Date(startDate);
-        currentEnd = new Date(endDate);
-        const duration = currentEnd - currentStart;
-        previousStart = new Date(currentStart - duration);
-        previousEnd = currentStart;
-        break;
-      default:
-        currentStart = today;
-        currentEnd = now;
-        previousStart = new Date(today.setDate(today.getDate() - 1));
-        previousEnd = today;
-    }
-
-    return { currentStart, currentEnd };
-  };
-
   const formatDate = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -160,15 +112,75 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
     const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
     
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
-  };
+};
+const getTimeRanges = () => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  let currentStart, currentEnd, previousStart, previousEnd;
+  
+  switch (timeRange) {
+    case '1day':
+      currentStart = today;
+      currentEnd = now;
+      previousStart = new Date(today);
+      previousStart.setDate(previousStart.getDate() - 1);
+      previousEnd = today;
+      break;
+    case '1week':
+      currentStart = new Date(today);
+      currentStart.setDate(currentStart.getDate() - 7);
+      currentEnd = now;
+      previousStart = new Date(currentStart);
+      previousStart.setDate(previousStart.getDate() - 7);
+      previousEnd = currentStart;
+      break;
+    case '1month':
+      currentStart = new Date(today);
+      currentStart.setMonth(currentStart.getMonth() - 1);
+      currentEnd = now;
+      previousStart = new Date(currentStart);
+      previousStart.setMonth(previousStart.getMonth() - 1);
+      previousEnd = currentStart;
+      break;
+    case '3months':
+      currentStart = new Date(today);
+      currentStart.setMonth(currentStart.getMonth() - 3);
+      currentEnd = now;
+      previousStart = new Date(currentStart);
+      previousStart.setMonth(previousStart.getMonth() - 3);
+      previousEnd = currentStart;
+      break;
+    case 'custom':
+      if (startDate && endDate) {
+        currentStart = new Date(startDate);
+        currentEnd = new Date(endDate);
+        const duration = currentEnd - currentStart;
+        previousStart = new Date(currentStart - duration);
+        previousEnd = currentStart;
+      }
+      break;
+    default:
+      currentStart = today;
+      currentEnd = now;
+      previousStart = new Date(today);
+      previousStart.setDate(previousStart.getDate() - 1);
+      previousEnd = today;
+  }
+  
+  return { currentStart, currentEnd, previousStart, previousEnd };
+};
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
+useEffect(() => {
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
 
-      const { currentStart, currentEnd } = getTimeRanges();
-      let query = supabase
+    try {
+      const { currentStart, currentEnd, previousStart, previousEnd } = getTimeRanges();
+
+      // Fetch current period data
+      let currentQuery = supabase
         .from('appointments')
         .select(`
           patient_id,
@@ -182,38 +194,64 @@ const CorrelationsBoard = ({ hospitalId, doctorId, timeRange, startDate, endDate
         .gte('appointment_time', formatDate(currentStart))
         .lte('appointment_time', formatDate(currentEnd));
 
+      // Fetch previous period data
+      let previousQuery = supabase
+        .from('appointments')
+        .select(`
+          patient_id,
+          appointment_time,
+          patients!inner(
+            gender,
+            how_did_you_get_to_know_us
+          )
+        `)
+        .eq('hospital_id', hospitalId)
+        .gte('appointment_time', formatDate(previousStart))
+        .lte('appointment_time', formatDate(previousEnd));
+
       if (doctorId !== 'all') {
-        query = query.eq('doctor_id', doctorId);
+        currentQuery = currentQuery.eq('doctor_id', doctorId);
+        previousQuery = previousQuery.eq('doctor_id', doctorId);
       }
 
-      const { data: appointments, error: queryError } = await query;
-      if (queryError) {
-        setError(queryError.message);
-        setIsLoading(false);
-        return;
-      }
+      const [currentResponse, previousResponse] = await Promise.all([
+        currentQuery,
+        previousQuery
+      ]);
 
-      const result = {
+      if (currentResponse.error) throw currentResponse.error;
+      if (previousResponse.error) throw previousResponse.error;
+
+      // Process current period data
+      const currentData = {
         male: { total: 0, channels: {} },
         female: { total: 0, channels: {} }
       };
 
-      appointments.forEach(appointment => {
+      currentResponse.data.forEach(appointment => {
         const gender = appointment.patients.gender.toLowerCase();
         const channel = appointment.patients.how_did_you_get_to_know_us;
 
-        if (gender in result) {
-          result[gender].total++;
-          result[gender].channels[channel] = (result[gender].channels[channel] || 0) + 1;
+        if (gender in currentData) {
+          currentData[gender].total++;
+          currentData[gender].channels[channel] = (currentData[gender].channels[channel] || 0) + 1;
         }
       });
 
-      setData(result);
+      setData(currentData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setError('Failed to load data');
+    } finally {
       setIsLoading(false);
-    };
+    }
+  };
 
+  if (hospitalId && doctorId && (timeRange !== 'custom' || (startDate && endDate))) {
     fetchData();
-  }, [hospitalId, doctorId, timeRange, startDate, endDate]);
+  }
+}, [hospitalId, doctorId, timeRange, startDate, endDate]);
+
 
   if (isLoading) {
     return (

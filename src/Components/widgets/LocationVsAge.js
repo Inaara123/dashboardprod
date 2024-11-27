@@ -204,6 +204,7 @@ const LocationVsAge = ({ hospitalId, doctorId, timeRange, startDate, endDate }) 
 
         const { data: appointments, error: queryError } = await query;
         if (queryError) throw queryError;
+        console.log("the data from location vs age is : ",data)
 
         // Get top 5 locations
         const locationCounts = {};
